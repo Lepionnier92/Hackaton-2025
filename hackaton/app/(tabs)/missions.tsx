@@ -138,7 +138,7 @@ export default function MissionsScreen() {
   if (!user) {
     return (
       <View className="flex-1 items-center justify-center bg-gray-50">
-        <ActivityIndicator size="large" color="#B8C901" />
+        <ActivityIndicator size="large" color="#006241" />
       </View>
     );
   }
@@ -165,7 +165,7 @@ export default function MissionsScreen() {
   return (
     <View className="flex-1 bg-gray-50">
       {/* Header */}
-      <View className="bg-[#B8C901] pt-12 pb-4 px-4">
+      <View className="bg-[#006241] pt-12 pb-4 px-4">
         <View className="flex-row items-center mb-4">
           <View className="bg-white/20 rounded-lg p-2 mr-3">
             <Ionicons name="briefcase" size={24} color="white" />
@@ -182,7 +182,7 @@ export default function MissionsScreen() {
             onPress={() => setActiveTab('proposed')}
             className={`flex-1 py-2 rounded-md ${activeTab === 'proposed' ? 'bg-white' : ''}`}
           >
-            <Text className={`text-center font-medium ${activeTab === 'proposed' ? 'text-[#B8C901]' : 'text-white'}`}>
+            <Text className={`text-center font-medium ${activeTab === 'proposed' ? 'text-[#006241]' : 'text-white'}`}>
               Proposées ({tabCounts.proposed})
             </Text>
           </TouchableOpacity>
@@ -190,7 +190,7 @@ export default function MissionsScreen() {
             onPress={() => setActiveTab('accepted')}
             className={`flex-1 py-2 rounded-md ${activeTab === 'accepted' ? 'bg-white' : ''}`}
           >
-            <Text className={`text-center font-medium ${activeTab === 'accepted' ? 'text-[#B8C901]' : 'text-white'}`}>
+            <Text className={`text-center font-medium ${activeTab === 'accepted' ? 'text-[#006241]' : 'text-white'}`}>
               En cours ({tabCounts.accepted})
             </Text>
           </TouchableOpacity>
@@ -198,7 +198,7 @@ export default function MissionsScreen() {
             onPress={() => setActiveTab('completed')}
             className={`flex-1 py-2 rounded-md ${activeTab === 'completed' ? 'bg-white' : ''}`}
           >
-            <Text className={`text-center font-medium ${activeTab === 'completed' ? 'text-[#B8C901]' : 'text-white'}`}>
+            <Text className={`text-center font-medium ${activeTab === 'completed' ? 'text-[#006241]' : 'text-white'}`}>
               Terminées ({tabCounts.completed})
             </Text>
           </TouchableOpacity>
@@ -207,12 +207,12 @@ export default function MissionsScreen() {
 
       {loading ? (
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#B8C901" />
+          <ActivityIndicator size="large" color="#006241" />
         </View>
       ) : (
         <ScrollView
           className="flex-1 px-4 pt-4"
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#B8C901']} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#006241']} />}
         >
           {filteredMissions.length === 0 ? (
             <View className="items-center py-12">
@@ -271,15 +271,15 @@ export default function MissionsScreen() {
                       <Text className="text-gray-400 ml-2">• {mission.duration} jour(s)</Text>
                     )}
                   </View>
-                  <Text className="text-[#B8C901] font-bold">{mission.budget} €</Text>
+                  <Text className="text-[#006241] font-bold">{mission.budget} €</Text>
                 </View>
 
                 {/* Skills tags */}
                 {mission.skills && (
                   <View className="flex-row flex-wrap mt-2">
                     {mission.skills.split(',').slice(0, 3).map((skill, index) => (
-                      <View key={index} className="bg-[#B8C901]/10 px-2 py-1 rounded mr-1 mb-1">
-                        <Text className="text-[#B8C901] text-xs">{skill.trim()}</Text>
+                      <View key={index} className="bg-[#006241]/10 px-2 py-1 rounded mr-1 mb-1">
+                        <Text className="text-[#006241] text-xs">{skill.trim()}</Text>
                       </View>
                     ))}
                   </View>
@@ -311,7 +311,7 @@ export default function MissionsScreen() {
                         handleAcceptMission(mission.id);
                       }}
                       disabled={processingId === mission.id}
-                      className="flex-1 flex-row items-center justify-center py-2 bg-[#B8C901] rounded-lg"
+                      className="flex-1 flex-row items-center justify-center py-2 bg-[#006241] rounded-lg"
                     >
                       {processingId === mission.id ? (
                         <ActivityIndicator size="small" color="white" />

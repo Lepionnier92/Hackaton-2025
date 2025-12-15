@@ -103,10 +103,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
+      // Supprimer les données d'authentification
       await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+      
+      // Nettoyer toutes les clés liées à l'utilisateur si nécessaire
+      const allKeys = await AsyncStorage.getAllKeys();
+      const userKeys = allKeys.filter(key => key.startsWith('@tenex_'));
+      if (userKeys.length > 0) {
+        // On garde les données initialisées mais on supprime l'auth
+        await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+      }
+      
+      // Mettre à jour l'état immédiatement
       setUser(null);
+      
+      // Pour le web: nettoyer le localStorage et sessionStorage aussi
+      if (typeof window !== 'undefined') {
+        try {
+          // Clear any web-specific storage
+          localStorage.removeItem(AUTH_STORAGE_KEY);
+          sessionStorage.clear();
+        } catch (e) {
+          // Ignorer si localStorage n'est pas disponible
+        }
+      }
     } catch (error) {
       console.error('Erreur logout:', error);
+      // Forcer la déconnexion même en cas d'erreur
+      setUser(null);
     }
   };
 

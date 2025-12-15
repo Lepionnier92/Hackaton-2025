@@ -1,198 +1,325 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Image } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { db, DBMission } from '@/services/database';
 
-export default function HomeScreen() {
+export default function DashboardScreen() {
   const { user } = useAuth();
+  const { theme } = useTheme();
   const router = useRouter();
-  const [missions, setMissions] = useState<DBMission[]>([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [missions, setMissions] = useState<DBMission[]>([]);
+  const [stats, setStats] = useState({
+    activeMissions: 0,
+    completedThisMonth: 0,
+    earnings: 0,
+    rating: 4.9,
+  });
 
-  const loadMissions = useCallback(async () => {
+  const loadData = useCallback(async () => {
     if (!user) return;
     try {
-      const userMissions = await db.getMissionsForUser(user.id);
-      setMissions(userMissions);
+      const allMissions = await db.getMissionsForUser(user.id);
+      setMissions(allMissions);
+      
+      const activeMissions = allMissions.filter(m => m.status === 'accepted' || m.status === 'in_progress').length;
+      const completedMissions = allMissions.filter(m => m.status === 'completed');
+      const currentMonth = new Date().getMonth();
+      const completedThisMonth = completedMissions.filter(m => 
+        new Date(m.endDate).getMonth() === currentMonth
+      ).length;
+      const earnings = completedMissions.reduce((sum, m) => sum + m.budget, 0);
+      
+      setStats({
+        activeMissions,
+        completedThisMonth,
+        earnings,
+        rating: 4.9,
+      });
     } catch (error) {
-      console.error('Error loading missions:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      console.error('Erreur chargement données:', error);
     }
   }, [user]);
 
   useEffect(() => {
-    loadMissions();
-  }, [loadMissions]);
+    loadData();
+  }, [loadData]);
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    loadMissions();
-  }, [loadMissions]);
+    await loadData();
+    setRefreshing(false);
+  }, [loadData]);
 
-  if (!user) {
-    return (
-      <View className="flex-1 items-center justify-center bg-gray-50">
-        <ActivityIndicator size="large" color="#B8C901" />
-      </View>
-    );
-  }
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Bonjour';
+    if (hour < 18) return 'Bon après-midi';
+    return 'Bonsoir';
+  };
 
-  const proposedMissions = missions.filter(m => m.status === 'proposed');
-  const acceptedMissions = missions.filter(m => m.status === 'accepted' || m.status === 'in_progress');
-  const completedMissions = missions.filter(m => m.status === 'completed');
+  const currentMission = missions.find(m => m.status === 'in_progress' || m.status === 'accepted');
+  const proposals = missions.filter(m => m.status === 'proposed').slice(0, 2);
 
-  const urgencyColors = {
-    low: { bg: 'bg-green-100', text: 'text-green-800', label: 'Normal' },
-    medium: { bg: 'bg-orange-100', text: 'text-orange-800', label: 'Moyenne' },
-    high: { bg: 'bg-red-100', text: 'text-red-800', label: 'Urgente' },
+  const handleAccept = async (missionId: number) => {
+    try {
+      await db.updateMissionStatus(missionId, 'accepted');
+      loadData();
+    } catch (error) {
+      console.error('Erreur:', error);
+    }
+  };
+
+  const handleReject = async (missionId: number) => {
+    try {
+      await db.updateMissionStatus(missionId, 'rejected');
+      loadData();
+    } catch (error) {
+      console.error('Erreur:', error);
+    }
   };
 
   return (
-    <View className="flex-1 bg-gray-50">
-      {/* Header */}
-      <View className="bg-[#B8C901] pt-12 pb-6 px-4">
-        <View className="flex-row items-center justify-between mb-4">
-          <View className="flex-row items-center">
-            <View className="bg-white rounded-lg p-2 mr-2">
-              <Ionicons name="construct" size={20} color="#B8C901" />
+    <View className="flex-1" style={{ backgroundColor: theme.background }}>
+      <ScrollView
+        className="flex-1"
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.text}
+          />
+        }
+      >
+        {/* Header */}
+        <View className="pt-14 px-4 pb-4">
+          <View className="flex-row items-center justify-between">
+            <View>
+              <Text style={{ color: theme.textMuted }} className="text-base">{getGreeting()},</Text>
+              <Text style={{ color: theme.text }} className="text-2xl font-bold">
+                {user?.firstName || 'Technicien'}
+              </Text>
             </View>
-            <Text className="text-white text-xl font-bold">TENEX</Text>
-            <Text className="text-white/70 ml-1">Workforce</Text>
+            <TouchableOpacity 
+              onPress={() => router.push('/(tabs)/profile' as any)}
+              className="rounded-full p-1"
+              style={{ backgroundColor: theme.card }}
+            >
+              <Image
+                source={{ uri: 'https://i.pravatar.cc/100' }}
+                className="w-12 h-12 rounded-full"
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Stats Grid */}
+        <View className="px-4 flex-row flex-wrap">
+          <TouchableOpacity 
+            onPress={() => router.push('/(tabs)/missions-list' as any)}
+            className="w-1/2 pr-2 mb-3"
+          >
+            <View className="rounded-2xl p-4" style={{ backgroundColor: theme.card }}>
+              <View className="rounded-full w-10 h-10 items-center justify-center mb-2" style={{ backgroundColor: `${theme.accent}20` }}>
+                <Ionicons name="briefcase-outline" size={20} color={theme.accent} />
+              </View>
+              <Text style={{ color: theme.text }} className="text-2xl font-bold">{stats.activeMissions}</Text>
+              <Text style={{ color: theme.textMuted }} className="text-sm">Missions actives</Text>
+            </View>
+          </TouchableOpacity>
+          <View className="w-1/2 pl-2 mb-3">
+            <View className="rounded-2xl p-4" style={{ backgroundColor: theme.card }}>
+              <View className="rounded-full w-10 h-10 items-center justify-center mb-2" style={{ backgroundColor: `${theme.success}20` }}>
+                <Ionicons name="checkmark-circle-outline" size={20} color={theme.success} />
+              </View>
+              <Text style={{ color: theme.text }} className="text-2xl font-bold">{stats.completedThisMonth}</Text>
+              <Text style={{ color: theme.textMuted }} className="text-sm">Ce mois</Text>
+            </View>
           </View>
           <TouchableOpacity 
-            onPress={() => router.push('/(tabs)/profile' as any)}
-            className="bg-white/20 rounded-full p-1"
+            onPress={() => router.push('/(tabs)/activity' as any)}
+            className="w-1/2 pr-2"
           >
-            {user.profilePicture ? (
-              <Image source={{ uri: user.profilePicture }} className="w-10 h-10 rounded-full" />
-            ) : (
-              <View className="w-10 h-10 rounded-full bg-white/30 items-center justify-center">
-                <Ionicons name="person" size={20} color="white" />
+            <View className="rounded-2xl p-4" style={{ backgroundColor: theme.card }}>
+              <View className="rounded-full w-10 h-10 items-center justify-center mb-2" style={{ backgroundColor: '#3b82f620' }}>
+                <Ionicons name="wallet-outline" size={20} color="#3b82f6" />
               </View>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        <View className="bg-white/20 rounded-xl p-4">
-          <Text className="text-white/70 text-sm">Bonjour,</Text>
-          <Text className="text-white text-xl font-bold">{user.firstName} {user.lastName}</Text>
-        </View>
-      </View>
-
-      {loading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#B8C901" />
-        </View>
-      ) : (
-        <ScrollView 
-          className="flex-1 px-4 pt-4"
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#B8C901']} />}
-        >
-          {/* Stats rapides */}
-          <View className="flex-row mb-6">
-            <View className="flex-1 bg-white rounded-xl p-4 mr-2 shadow-sm">
-              <View className="flex-row items-center">
-                <View className="bg-[#B8C901]/10 rounded-lg p-2 mr-3">
-                  <Ionicons name="time" size={20} color="#B8C901" />
-                </View>
-                <View>
-                  <Text className="text-gray-500 text-xs">En attente</Text>
-                  <Text className="text-2xl font-bold text-gray-800">{proposedMissions.length}</Text>
-                </View>
-              </View>
+              <Text style={{ color: theme.text }} className="text-2xl font-bold">€{stats.earnings.toLocaleString()}</Text>
+              <Text style={{ color: theme.textMuted }} className="text-sm">Revenus</Text>
             </View>
-            <View className="flex-1 bg-white rounded-xl p-4 ml-2 shadow-sm">
-              <View className="flex-row items-center">
-                <View className="bg-green-100 rounded-lg p-2 mr-3">
-                  <Ionicons name="checkmark-circle" size={20} color="#10b981" />
-                </View>
-                <View>
-                  <Text className="text-gray-500 text-xs">Terminées</Text>
-                  <Text className="text-2xl font-bold text-gray-800">{completedMissions.length}</Text>
-                </View>
+          </TouchableOpacity>
+          <View className="w-1/2 pl-2">
+            <View className="rounded-2xl p-4" style={{ backgroundColor: theme.card }}>
+              <View className="rounded-full w-10 h-10 items-center justify-center mb-2" style={{ backgroundColor: '#eab30820' }}>
+                <Ionicons name="star-outline" size={20} color="#eab308" />
               </View>
+              <Text style={{ color: theme.text }} className="text-2xl font-bold">{stats.rating}</Text>
+              <Text style={{ color: theme.textMuted }} className="text-sm">Note moyenne</Text>
             </View>
           </View>
+        </View>
 
-          {/* Missions proposées */}
-          {proposedMissions.length > 0 && (
-            <View className="mb-6">
-              <Text className="text-lg font-bold text-gray-800 mb-3">Nouvelles propositions</Text>
-              {proposedMissions.map((mission) => (
-                <TouchableOpacity
-                  key={mission.id}
-                  onPress={() => router.push(`/mission/${mission.id}` as any)}
-                  className="bg-white rounded-xl p-4 mb-3 shadow-sm border border-gray-100"
-                >
-                  <View className="flex-row justify-between items-start mb-2">
-                    <Text className="text-gray-800 font-semibold flex-1 mr-2">{mission.title}</Text>
-                    <View className={`px-2 py-1 rounded-full ${urgencyColors[mission.urgency].bg}`}>
-                      <Text className={`text-xs font-medium ${urgencyColors[mission.urgency].text}`}>
-                        {urgencyColors[mission.urgency].label}
-                      </Text>
-                    </View>
-                  </View>
-                  <View className="flex-row items-center mb-2">
-                    <Ionicons name="location-outline" size={16} color="#6b7280" />
-                    <Text className="text-gray-500 ml-1">{mission.location}</Text>
-                  </View>
-                  <View className="flex-row items-center justify-between">
-                    <View className="flex-row items-center">
-                      <Ionicons name="calendar-outline" size={16} color="#6b7280" />
-                      <Text className="text-gray-500 ml-1">
-                        {new Date(mission.startDate).toLocaleDateString('fr-FR')}
-                      </Text>
-                    </View>
-                    <Text className="text-[#B8C901] font-bold">{mission.budget} €</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
+        {/* Mission en cours */}
+        {currentMission && (
+          <View className="px-4 mt-6">
+            <View className="flex-row items-center justify-between mb-4">
+              <Text style={{ color: theme.text }} className="text-xl font-bold">Mission en cours</Text>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/missions-list' as any)}>
+                <Text style={{ color: theme.accent }} className="font-medium">Voir tout</Text>
+              </TouchableOpacity>
             </View>
-          )}
-
-          {/* Missions en cours */}
-          {acceptedMissions.length > 0 && (
-            <View className="mb-6">
-              <Text className="text-lg font-bold text-gray-800 mb-3">Missions en cours</Text>
-              {acceptedMissions.map((mission) => (
-                <TouchableOpacity
-                  key={mission.id}
-                  onPress={() => router.push(`/mission/${mission.id}` as any)}
-                  className="bg-white rounded-xl p-4 mb-3 shadow-sm border-l-4 border-[#B8C901]"
-                >
-                  <Text className="text-gray-800 font-semibold mb-2">{mission.title}</Text>
-                  <View className="flex-row items-center">
-                    <Ionicons name="location-outline" size={16} color="#6b7280" />
-                    <Text className="text-gray-500 ml-1">{mission.location}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          {/* État vide */}
-          {missions.length === 0 && (
-            <View className="items-center py-12">
-              <View className="bg-gray-100 rounded-full p-6 mb-4">
-                <Ionicons name="briefcase-outline" size={48} color="#d1d5db" />
+            <View className="rounded-2xl p-4" style={{ backgroundColor: theme.card, borderWidth: 1, borderColor: `${theme.accent}50` }}>
+              <View className="flex-row items-center justify-between mb-3">
+                <View className="flex-1">
+                  <Text style={{ color: theme.text }} className="font-semibold text-lg">{currentMission.title}</Text>
+                  <Text style={{ color: theme.textMuted }} className="text-sm">{currentMission.location}</Text>
+                </View>
+                <View className="rounded-full px-3 py-1" style={{ backgroundColor: currentMission.status === 'in_progress' ? '#3b82f620' : `${theme.success}20` }}>
+                  <Text style={{ color: currentMission.status === 'in_progress' ? '#3b82f6' : theme.success }} className="text-sm font-medium">
+                    {currentMission.status === 'in_progress' ? 'En cours' : 'Acceptée'}
+                  </Text>
+                </View>
               </View>
-              <Text className="text-gray-600 font-medium text-center text-lg">
-                Aucune mission pour le moment
-              </Text>
-              <Text className="text-gray-400 text-sm text-center mt-2 px-8">
-                Les administrateurs TENEX vous proposeront des missions adaptées à vos compétences.
-              </Text>
-            </View>
-          )}
+              
+              <View className="flex-row items-center mt-2">
+                <View className="flex-row items-center mr-4">
+                  <Ionicons name="calendar-outline" size={16} color={theme.textMuted} />
+                  <Text style={{ color: theme.textMuted }} className="text-sm ml-1">
+                    {new Date(currentMission.startDate).toLocaleDateString('fr-FR')}
+                  </Text>
+                </View>
+                <View className="flex-row items-center">
+                  <Ionicons name="cash-outline" size={16} color={theme.success} />
+                  <Text style={{ color: theme.success }} className="text-sm ml-1 font-medium">{currentMission.budget}€</Text>
+                </View>
+              </View>
 
-          <View className="h-8" />
-        </ScrollView>
-      )}
+              <TouchableOpacity 
+                onPress={() => router.push('/(tabs)/missions-list' as any)}
+                className="rounded-xl py-3 mt-4 items-center"
+                style={{ backgroundColor: theme.accent }}
+              >
+                <Text className="text-white font-semibold">Voir les détails</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Nouvelles propositions */}
+        <View className="px-4 mt-6">
+          <View className="flex-row items-center justify-between mb-4">
+            <Text style={{ color: theme.text }} className="text-xl font-bold">Nouvelles propositions</Text>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/missions-list' as any)}>
+              <Text style={{ color: theme.accent }} className="font-medium">Voir tout</Text>
+            </TouchableOpacity>
+          </View>
+
+          {proposals.length === 0 ? (
+            <View className="rounded-2xl p-6 items-center" style={{ backgroundColor: theme.card }}>
+              <Ionicons name="document-text-outline" size={48} color={theme.textMuted} />
+              <Text style={{ color: theme.textMuted }} className="mt-3">Aucune nouvelle proposition</Text>
+            </View>
+          ) : (
+            proposals.map((proposal) => (
+              <TouchableOpacity
+                key={proposal.id}
+                className="rounded-2xl p-4 mb-3"
+                style={{ 
+                  backgroundColor: theme.card,
+                  borderWidth: 1, 
+                  borderColor: proposal.urgency === 'high' ? theme.error : theme.cardBorder 
+                }}
+              >
+                <View className="flex-row items-start justify-between mb-2">
+                  <View className="flex-1">
+                    <View className="flex-row items-center">
+                      {proposal.urgency === 'high' && (
+                        <View className="rounded-full px-2 py-0.5 mr-2" style={{ backgroundColor: `${theme.error}20` }}>
+                          <Text style={{ color: theme.error }} className="text-xs font-medium">Urgent</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={{ color: theme.text }} className="font-semibold text-base mt-2">{proposal.title}</Text>
+                    <Text style={{ color: theme.textMuted }} className="text-sm">{proposal.location}</Text>
+                  </View>
+                  <Text style={{ color: theme.text }} className="font-bold text-lg">€{proposal.budget.toLocaleString()}</Text>
+                </View>
+
+                <View className="flex-row items-center mt-3">
+                  <View className="flex-row items-center mr-4">
+                    <Ionicons name="location-outline" size={16} color={theme.textMuted} />
+                    <Text style={{ color: theme.textMuted }} className="text-sm ml-1">{proposal.location}</Text>
+                  </View>
+                  <View className="flex-row items-center">
+                    <Ionicons name="time-outline" size={16} color={theme.textMuted} />
+                    <Text style={{ color: theme.textMuted }} className="text-sm ml-1">{proposal.duration} jour(s)</Text>
+                  </View>
+                </View>
+
+                <View className="flex-row mt-4">
+                  <TouchableOpacity 
+                    onPress={() => handleAccept(proposal.id)}
+                    className="flex-1 rounded-xl py-3 mr-2 items-center"
+                    style={{ backgroundColor: theme.accent }}
+                  >
+                    <Text className="text-white font-semibold">Accepter</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    onPress={() => handleReject(proposal.id)}
+                    className="flex-1 rounded-xl py-3 ml-2 items-center"
+                    style={{ backgroundColor: theme.inputBackground }}
+                  >
+                    <Text style={{ color: theme.textMuted }} className="font-semibold">Refuser</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            ))
+          )}
+        </View>
+
+        {/* Quick Actions */}
+        <View className="px-4 mt-6">
+          <Text style={{ color: theme.text }} className="text-xl font-bold mb-4">Accès rapide</Text>
+          <View className="flex-row">
+            <TouchableOpacity 
+              onPress={() => router.push('/(tabs)/agenda' as any)}
+              className="flex-1 rounded-2xl p-4 mr-2 items-center"
+              style={{ backgroundColor: theme.card }}
+            >
+              <View className="rounded-full w-12 h-12 items-center justify-center mb-2" style={{ backgroundColor: `${theme.accent}20` }}>
+                <Ionicons name="calendar-outline" size={24} color={theme.accent} />
+              </View>
+              <Text style={{ color: theme.text }} className="font-medium">Agenda</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              onPress={() => router.push('/(tabs)/messages' as any)}
+              className="flex-1 rounded-2xl p-4 mx-2 items-center"
+              style={{ backgroundColor: theme.card }}
+            >
+              <View className="rounded-full w-12 h-12 items-center justify-center mb-2" style={{ backgroundColor: '#3b82f620' }}>
+                <Ionicons name="chatbubble-outline" size={24} color="#3b82f6" />
+              </View>
+              <Text style={{ color: theme.text }} className="font-medium">Messages</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              onPress={() => router.push('/(tabs)/activity' as any)}
+              className="flex-1 rounded-2xl p-4 ml-2 items-center"
+              style={{ backgroundColor: theme.card }}
+            >
+              <View className="rounded-full w-12 h-12 items-center justify-center mb-2" style={{ backgroundColor: `${theme.success}20` }}>
+                <Ionicons name="wallet-outline" size={24} color={theme.success} />
+              </View>
+              <Text style={{ color: theme.text }} className="font-medium">Revenus</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View className="h-24" />
+      </ScrollView>
     </View>
   );
 }

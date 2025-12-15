@@ -110,7 +110,7 @@ export default function MissionDetailsScreen() {
   if (loading) {
     return (
       <View className="flex-1 items-center justify-center bg-gray-50">
-        <ActivityIndicator size="large" color="#B8C901" />
+        <ActivityIndicator size="large" color="#006241" />
       </View>
     );
   }
@@ -120,7 +120,7 @@ export default function MissionDetailsScreen() {
       <View className="flex-1 items-center justify-center bg-gray-50">
         <Ionicons name="alert-circle-outline" size={48} color="#d1d5db" />
         <Text className="text-gray-500 mt-4">Mission non trouvée</Text>
-        <TouchableOpacity onPress={() => router.back()} className="mt-4 bg-[#B8C901] px-6 py-3 rounded-lg">
+        <TouchableOpacity onPress={() => router.back()} className="mt-4 bg-[#006241] px-6 py-3 rounded-lg">
           <Text className="text-white font-medium">Retour</Text>
         </TouchableOpacity>
       </View>
@@ -153,7 +153,7 @@ export default function MissionDetailsScreen() {
     <View className="flex-1 bg-gray-50">
       <ScrollView className="flex-1">
         {/* Header */}
-        <View className="bg-[#B8C901] pt-12 pb-6 px-4">
+        <View className="bg-[#006241] pt-12 pb-6 px-4">
           <TouchableOpacity onPress={() => router.back()} className="mb-4 flex-row items-center">
             <Ionicons name="arrow-back" size={24} color="white" />
             <Text className="text-white ml-2">Retour</Text>
@@ -174,7 +174,7 @@ export default function MissionDetailsScreen() {
         {/* Informations clés */}
         <View className="bg-white mx-4 -mt-4 rounded-xl shadow-sm p-4 mb-4 border border-gray-100">
           <View className="flex-row items-center mb-4">
-            <Ionicons name="calendar" size={20} color="#B8C901" />
+            <Ionicons name="calendar" size={20} color="#006241" />
             <View className="ml-3 flex-1">
               <Text className="text-gray-600 text-sm">Dates</Text>
               <Text className="text-gray-800 font-semibold">
@@ -185,7 +185,7 @@ export default function MissionDetailsScreen() {
           </View>
 
           <View className="flex-row items-center mb-4">
-            <Ionicons name="time" size={20} color="#B8C901" />
+            <Ionicons name="time" size={20} color="#006241" />
             <View className="ml-3 flex-1">
               <Text className="text-gray-600 text-sm">Durée</Text>
               <Text className="text-gray-800 font-semibold">{mission.duration} jour(s)</Text>
@@ -193,7 +193,7 @@ export default function MissionDetailsScreen() {
           </View>
 
           <View className="flex-row items-center mb-4">
-            <Ionicons name="location" size={20} color="#B8C901" />
+            <Ionicons name="location" size={20} color="#006241" />
             <View className="ml-3 flex-1">
               <Text className="text-gray-600 text-sm">Lieu</Text>
               <Text className="text-gray-800 font-semibold">{mission.location}</Text>
@@ -226,8 +226,8 @@ export default function MissionDetailsScreen() {
             <Text className="text-lg font-bold mb-3 text-gray-800">Compétences requises</Text>
             <View className="flex-row flex-wrap">
               {skills.map((skill, index) => (
-                <View key={index} className="bg-[#B8C901]/10 px-3 py-2 rounded-full mr-2 mb-2">
-                  <Text className="text-[#B8C901]">{skill}</Text>
+                <View key={index} className="bg-[#006241]/10 px-3 py-2 rounded-full mr-2 mb-2">
+                  <Text className="text-[#006241]">{skill}</Text>
                 </View>
               ))}
             </View>
@@ -250,7 +250,7 @@ export default function MissionDetailsScreen() {
             <TouchableOpacity
               onPress={handleAccept}
               disabled={accepting}
-              className="flex-1 bg-[#B8C901] py-4 rounded-xl items-center"
+              className="flex-1 bg-[#006241] py-4 rounded-xl items-center"
             >
               <Text className="text-white font-semibold">
                 {accepting ? 'Envoi...' : 'Accepter'}
