@@ -1,20 +1,68 @@
-# Welcome to your Expo app 👋
+# TENEXA Workforce - Application Mobile Techniciens
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Application mobile React Native pour les techniciens de la plateforme TENEXA Workforce.
 
-## Get started
+## 🎯 Objectif
 
-1. Install dependencies
+TENEXA Workforce est une plateforme de mise en relation entre techniciens et entreprises pour la gestion et l'exécution de missions techniques. Cette application mobile permet aux techniciens de :
 
-   ```bash
-   npm install
-   ```
+- Gérer leur profil et leurs disponibilités
+- Recevoir des propositions de missions personnalisées (via algorithme de matching)
+- Accepter ou refuser des missions
+- Communiquer avec les clients et TENEXA
+- Suivre leur activité et leurs revenus
 
-2. Start the app
+## 🏗️ Architecture
 
-   ```bash
-   npx expo start
-   ```
+L'application est construite avec :
+
+- **React Native** + **Expo** : Framework de développement mobile
+- **NativeWind** : Tailwind CSS pour React Native
+- **TypeScript** : Typage statique
+- **Expo Router** : Navigation basée sur le système de fichiers
+
+## 📱 Fonctionnalités implémentées
+
+### 1. Tableau de bord
+- Vue d'ensemble du profil technicien
+- Statistiques d'activité (missions, revenus)
+- Nouvelles propositions de missions
+- Actions rapides
+
+### 2. Gestion des missions
+- **Proposées** : Missions proposées par l'algorithme
+- **En cours** : Missions acceptées
+- **Terminées** : Historique
+- Vue détaillée avec toutes les informations
+- Acceptation/Refus de missions
+
+### 3. Messagerie
+- Liste des conversations par mission
+- Chat en temps réel avec clients/TENEX
+- Notifications de nouveaux messages
+
+### 4. Profil technicien
+- Informations personnelles
+- Compétences et certifications
+- Zones d'intervention
+- Disponibilités temporelles
+- Documents (CV, pièces d'identité, fiches de paie)
+- Toggle disponibilité
+
+## 🚀 Installation et lancement
+
+### Installation
+
+```bash
+cd hackaton
+npm install
+```
+
+### Lancement
+
+```bash
+# Démarrer le serveur de développement
+npx expo start
 
 In the output, you'll find options to open the app in a
 
