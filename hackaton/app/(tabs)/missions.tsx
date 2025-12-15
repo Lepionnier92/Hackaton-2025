@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Platform, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,6 +14,7 @@ export default function MissionsScreen() {
   const [missions, setMissions] = useState<DBMission[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [processingId, setProcessingId] = useState<number | null>(null);
 
   const loadMissions = useCallback(async () => {
     if (!user) return;
@@ -27,6 +28,103 @@ export default function MissionsScreen() {
       setRefreshing(false);
     }
   }, [user]);
+
+  const handleAcceptMission = async (missionId: number) => {
+    setProcessingId(missionId);
+    try {
+      await db.updateMissionStatus(missionId, 'accepted');
+      await loadMissions();
+      if (Platform.OS === 'web') {
+        window.alert('Mission acceptée avec succès !');
+      } else {
+        Alert.alert('Succès', 'Mission acceptée avec succès !');
+      }
+    } catch (error) {
+      console.error('Error accepting mission:', error);
+      if (Platform.OS === 'web') {
+        window.alert('Erreur lors de l\'acceptation');
+      } else {
+        Alert.alert('Erreur', 'Impossible d\'accepter la mission');
+      }
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleRejectMission = async (missionId: number) => {
+    const doReject = async () => {
+      setProcessingId(missionId);
+      try {
+        await db.updateMissionStatus(missionId, 'rejected');
+        await loadMissions();
+      } catch (error) {
+        console.error('Error rejecting mission:', error);
+      } finally {
+        setProcessingId(null);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Êtes-vous sûr de vouloir refuser cette mission ?')) {
+        await doReject();
+      }
+    } else {
+      Alert.alert(
+        'Refuser la mission',
+        'Êtes-vous sûr de vouloir refuser cette mission ?',
+        [
+          { text: 'Annuler', style: 'cancel' },
+          { text: 'Refuser', style: 'destructive', onPress: doReject },
+        ]
+      );
+    }
+  };
+
+  const handleCompleteMission = async (missionId: number) => {
+    const doComplete = async () => {
+      setProcessingId(missionId);
+      try {
+        await db.updateMissionStatus(missionId, 'completed');
+        await loadMissions();
+        if (Platform.OS === 'web') {
+          window.alert('Mission marquée comme terminée !');
+        } else {
+          Alert.alert('Succès', 'Mission marquée comme terminée !');
+        }
+      } catch (error) {
+        console.error('Error completing mission:', error);
+      } finally {
+        setProcessingId(null);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Marquer cette mission comme terminée ?')) {
+        await doComplete();
+      }
+    } else {
+      Alert.alert(
+        'Terminer la mission',
+        'Marquer cette mission comme terminée ?',
+        [
+          { text: 'Annuler', style: 'cancel' },
+          { text: 'Terminer', onPress: doComplete },
+        ]
+      );
+    }
+  };
+
+  const handleStartMission = async (missionId: number) => {
+    setProcessingId(missionId);
+    try {
+      await db.updateMissionStatus(missionId, 'in_progress');
+      await loadMissions();
+    } catch (error) {
+      console.error('Error starting mission:', error);
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
   useEffect(() => {
     loadMissions();
@@ -184,6 +282,114 @@ export default function MissionsScreen() {
                         <Text className="text-[#B8C901] text-xs">{skill.trim()}</Text>
                       </View>
                     ))}
+                  </View>
+                )}
+
+                {/* Boutons Accepter/Refuser pour missions proposées */}
+                {mission.status === 'proposed' && (
+                  <View className="flex-row mt-3 pt-3 border-t border-gray-100">
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleRejectMission(mission.id);
+                      }}
+                      disabled={processingId === mission.id}
+                      className="flex-1 flex-row items-center justify-center py-2 mr-2 bg-red-50 rounded-lg border border-red-200"
+                    >
+                      {processingId === mission.id ? (
+                        <ActivityIndicator size="small" color="#ef4444" />
+                      ) : (
+                        <>
+                          <Ionicons name="close-circle-outline" size={18} color="#ef4444" />
+                          <Text className="text-red-500 font-medium ml-1">Refuser</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleAcceptMission(mission.id);
+                      }}
+                      disabled={processingId === mission.id}
+                      className="flex-1 flex-row items-center justify-center py-2 bg-[#B8C901] rounded-lg"
+                    >
+                      {processingId === mission.id ? (
+                        <ActivityIndicator size="small" color="white" />
+                      ) : (
+                        <>
+                          <Ionicons name="checkmark-circle-outline" size={18} color="white" />
+                          <Text className="text-white font-medium ml-1">Accepter</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* Statut pour missions en cours */}
+                {(mission.status === 'accepted' || mission.status === 'in_progress') && (
+                  <View className="mt-3 pt-3 border-t border-gray-100">
+                    <View className="flex-row items-center justify-between mb-3">
+                      <View className={`flex-row items-center px-3 py-1 rounded-full ${mission.status === 'in_progress' ? 'bg-blue-100' : 'bg-green-100'}`}>
+                        <Ionicons 
+                          name={mission.status === 'in_progress' ? 'construct' : 'checkmark-circle'} 
+                          size={14} 
+                          color={mission.status === 'in_progress' ? '#3b82f6' : '#22c55e'} 
+                        />
+                        <Text className={`ml-1 text-sm font-medium ${mission.status === 'in_progress' ? 'text-blue-600' : 'text-green-600'}`}>
+                          {mission.status === 'in_progress' ? 'En cours' : 'Acceptée'}
+                        </Text>
+                      </View>
+                    </View>
+                    
+                    {/* Boutons d'action pour missions en cours */}
+                    <View className="flex-row">
+                      {mission.status === 'accepted' && (
+                        <TouchableOpacity
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleStartMission(mission.id);
+                          }}
+                          disabled={processingId === mission.id}
+                          className="flex-1 flex-row items-center justify-center py-2 mr-2 bg-blue-500 rounded-lg"
+                        >
+                          {processingId === mission.id ? (
+                            <ActivityIndicator size="small" color="white" />
+                          ) : (
+                            <>
+                              <Ionicons name="play" size={16} color="white" />
+                              <Text className="text-white font-medium ml-1">Démarrer</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleCompleteMission(mission.id);
+                        }}
+                        disabled={processingId === mission.id}
+                        className={`flex-1 flex-row items-center justify-center py-2 bg-green-500 rounded-lg ${mission.status === 'accepted' ? '' : ''}`}
+                      >
+                        {processingId === mission.id ? (
+                          <ActivityIndicator size="small" color="white" />
+                        ) : (
+                          <>
+                            <Ionicons name="checkmark-done" size={16} color="white" />
+                            <Text className="text-white font-medium ml-1">Terminer</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+
+                {/* Badge terminée */}
+                {mission.status === 'completed' && (
+                  <View className="flex-row items-center mt-3 pt-3 border-t border-gray-100">
+                    <View className="flex-row items-center px-3 py-1 rounded-full bg-green-100">
+                      <Ionicons name="checkmark-done-circle" size={14} color="#22c55e" />
+                      <Text className="ml-1 text-sm font-medium text-green-600">Terminée</Text>
+                    </View>
                   </View>
                 )}
               </TouchableOpacity>

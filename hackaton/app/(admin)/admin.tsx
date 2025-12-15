@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Modal, ActivityIndicator, RefreshControl, Image } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Modal, ActivityIndicator, RefreshControl, Image, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,7 +19,9 @@ export default function AdminScreen() {
   // Modals
   const [userModalVisible, setUserModalVisible] = useState(false);
   const [missionModalVisible, setMissionModalVisible] = useState(false);
+  const [editMissionModalVisible, setEditMissionModalVisible] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [editingMissionId, setEditingMissionId] = useState<number | null>(null);
 
   // New user form
   const [newUser, setNewUser] = useState({
@@ -43,6 +45,20 @@ export default function AdminScreen() {
     urgency: 'medium' as 'low' | 'medium' | 'high',
     skills: '',
     assignedToUserId: null as number | null,
+  });
+
+  // Edit mission form
+  const [editMission, setEditMission] = useState({
+    title: '',
+    description: '',
+    location: '',
+    address: '',
+    duration: '1',
+    budget: '',
+    urgency: 'medium' as 'low' | 'medium' | 'high',
+    skills: '',
+    assignedToUserId: null as number | null,
+    status: 'proposed' as DBMission['status'],
   });
 
   const loadData = useCallback(async () => {
@@ -139,25 +155,121 @@ export default function AdminScreen() {
   };
 
   const handleDeleteUser = (userId: number) => {
-    Alert.alert(
-      'Supprimer l\'utilisateur',
-      'Êtes-vous sûr de vouloir supprimer cet utilisateur ?',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Supprimer',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await db.deleteUser(userId);
-              loadData();
-            } catch (error) {
-              Alert.alert('Erreur', 'Impossible de supprimer l\'utilisateur');
-            }
-          },
-        },
-      ]
-    );
+    const doDelete = async () => {
+      try {
+        await db.deleteUser(userId);
+        loadData();
+      } catch (error) {
+        if (Platform.OS === 'web') {
+          window.alert('Impossible de supprimer l\'utilisateur');
+        } else {
+          Alert.alert('Erreur', 'Impossible de supprimer l\'utilisateur');
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        'Supprimer l\'utilisateur',
+        'Êtes-vous sûr de vouloir supprimer cet utilisateur ?',
+        [
+          { text: 'Annuler', style: 'cancel' },
+          { text: 'Supprimer', style: 'destructive', onPress: doDelete },
+        ]
+      );
+    }
+  };
+
+  const handleDeleteMission = (missionId: number) => {
+    const doDelete = async () => {
+      try {
+        await db.deleteMission(missionId);
+        loadData();
+        if (Platform.OS === 'web') {
+          window.alert('Mission supprimée avec succès');
+        } else {
+          Alert.alert('Succès', 'Mission supprimée avec succès');
+        }
+      } catch (error) {
+        if (Platform.OS === 'web') {
+          window.alert('Impossible de supprimer la mission');
+        } else {
+          Alert.alert('Erreur', 'Impossible de supprimer la mission');
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Êtes-vous sûr de vouloir supprimer cette mission ?')) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        'Supprimer la mission',
+        'Êtes-vous sûr de vouloir supprimer cette mission ?',
+        [
+          { text: 'Annuler', style: 'cancel' },
+          { text: 'Supprimer', style: 'destructive', onPress: doDelete },
+        ]
+      );
+    }
+  };
+
+  const openEditMissionModal = (mission: DBMission) => {
+    setEditingMissionId(mission.id);
+    setEditMission({
+      title: mission.title,
+      description: mission.description,
+      location: mission.location,
+      address: mission.address,
+      duration: mission.duration.toString(),
+      budget: mission.budget.toString(),
+      urgency: mission.urgency,
+      skills: mission.skills,
+      assignedToUserId: mission.assignedToUserId,
+      status: mission.status,
+    });
+    setEditMissionModalVisible(true);
+  };
+
+  const handleUpdateMission = async () => {
+    if (!editingMissionId) return;
+
+    setCreating(true);
+    try {
+      await db.updateMission(editingMissionId, {
+        title: editMission.title,
+        description: editMission.description,
+        location: editMission.location,
+        address: editMission.address,
+        duration: parseInt(editMission.duration) || 1,
+        budget: parseFloat(editMission.budget) || 0,
+        urgency: editMission.urgency,
+        skills: editMission.skills,
+        assignedToUserId: editMission.assignedToUserId,
+        status: editMission.status,
+      });
+      
+      if (Platform.OS === 'web') {
+        window.alert('Mission modifiée avec succès');
+      } else {
+        Alert.alert('Succès', 'Mission modifiée avec succès');
+      }
+      setEditMissionModalVisible(false);
+      loadData();
+    } catch (error) {
+      if (Platform.OS === 'web') {
+        window.alert('Impossible de modifier la mission');
+      } else {
+        Alert.alert('Erreur', 'Impossible de modifier la mission');
+      }
+    } finally {
+      setCreating(false);
+    }
   };
 
   if (!user || user.role !== 'admin') {
@@ -283,15 +395,18 @@ export default function AdminScreen() {
                         <View className={`px-2 py-1 rounded-full ${
                           mission.status === 'completed' ? 'bg-green-100' :
                           mission.status === 'accepted' ? 'bg-blue-100' :
+                          mission.status === 'in_progress' ? 'bg-purple-100' :
                           mission.status === 'rejected' ? 'bg-red-100' : 'bg-orange-100'
                         }`}>
                           <Text className={`text-xs ${
                             mission.status === 'completed' ? 'text-green-700' :
                             mission.status === 'accepted' ? 'text-blue-700' :
+                            mission.status === 'in_progress' ? 'text-purple-700' :
                             mission.status === 'rejected' ? 'text-red-700' : 'text-orange-700'
                           }`}>
                             {mission.status === 'completed' ? 'Terminée' :
                              mission.status === 'accepted' ? 'Acceptée' :
+                             mission.status === 'in_progress' ? 'En cours' :
                              mission.status === 'rejected' ? 'Refusée' : 'Proposée'}
                           </Text>
                         </View>
@@ -300,7 +415,7 @@ export default function AdminScreen() {
                         <Ionicons name="location-outline" size={16} color="#6b7280" />
                         <Text className="text-gray-500 ml-1">{mission.location}</Text>
                       </View>
-                      <View className="flex-row items-center justify-between">
+                      <View className="flex-row items-center justify-between mb-3">
                         <View className="flex-row items-center">
                           <Ionicons name="person-outline" size={16} color="#6b7280" />
                           <Text className="text-gray-500 ml-1">
@@ -308,6 +423,24 @@ export default function AdminScreen() {
                           </Text>
                         </View>
                         <Text className="text-[#B8C901] font-bold">{mission.budget} €</Text>
+                      </View>
+                      
+                      {/* Boutons modifier/supprimer */}
+                      <View className="flex-row border-t border-gray-100 pt-3">
+                        <TouchableOpacity
+                          onPress={() => openEditMissionModal(mission)}
+                          className="flex-1 flex-row items-center justify-center py-2 mr-2 bg-blue-50 rounded-lg"
+                        >
+                          <Ionicons name="create-outline" size={16} color="#3b82f6" />
+                          <Text className="text-blue-600 font-medium ml-1">Modifier</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleDeleteMission(mission.id)}
+                          className="flex-1 flex-row items-center justify-center py-2 bg-red-50 rounded-lg"
+                        >
+                          <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                          <Text className="text-red-500 font-medium ml-1">Supprimer</Text>
+                        </TouchableOpacity>
                       </View>
                     </View>
                   );
@@ -532,6 +665,159 @@ export default function AdminScreen() {
                   <ActivityIndicator color="white" />
                 ) : (
                   <Text className="text-white font-semibold">Créer la mission</Text>
+                )}
+              </TouchableOpacity>
+
+              <View className="h-6" />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Mission Modal */}
+      <Modal visible={editMissionModalVisible} animationType="slide" transparent>
+        <View className="flex-1 bg-black/50 justify-end">
+          <View className="bg-white rounded-t-3xl p-6 max-h-[90%]">
+            <View className="flex-row justify-between items-center mb-6">
+              <Text className="text-xl font-bold text-gray-800">Modifier la mission</Text>
+              <TouchableOpacity onPress={() => setEditMissionModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text className="text-gray-600 mb-2">Titre *</Text>
+              <TextInput
+                className="bg-gray-100 rounded-xl px-4 py-3 mb-4"
+                placeholder="Installation fibre optique"
+                value={editMission.title}
+                onChangeText={(text) => setEditMission({ ...editMission, title: text })}
+              />
+
+              <Text className="text-gray-600 mb-2">Description</Text>
+              <TextInput
+                className="bg-gray-100 rounded-xl px-4 py-3 mb-4"
+                placeholder="Détails de la mission..."
+                value={editMission.description}
+                onChangeText={(text) => setEditMission({ ...editMission, description: text })}
+                multiline
+                numberOfLines={3}
+              />
+
+              <Text className="text-gray-600 mb-2">Lieu *</Text>
+              <TextInput
+                className="bg-gray-100 rounded-xl px-4 py-3 mb-4"
+                placeholder="Paris 15e"
+                value={editMission.location}
+                onChangeText={(text) => setEditMission({ ...editMission, location: text })}
+              />
+
+              <Text className="text-gray-600 mb-2">Adresse</Text>
+              <TextInput
+                className="bg-gray-100 rounded-xl px-4 py-3 mb-4"
+                placeholder="42 Rue de la Convention"
+                value={editMission.address}
+                onChangeText={(text) => setEditMission({ ...editMission, address: text })}
+              />
+
+              <View className="flex-row mb-4">
+                <View className="flex-1 mr-2">
+                  <Text className="text-gray-600 mb-2">Durée (jours)</Text>
+                  <TextInput
+                    className="bg-gray-100 rounded-xl px-4 py-3"
+                    placeholder="3"
+                    value={editMission.duration}
+                    onChangeText={(text) => setEditMission({ ...editMission, duration: text })}
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View className="flex-1 ml-2">
+                  <Text className="text-gray-600 mb-2">Budget (€) *</Text>
+                  <TextInput
+                    className="bg-gray-100 rounded-xl px-4 py-3"
+                    placeholder="1500"
+                    value={editMission.budget}
+                    onChangeText={(text) => setEditMission({ ...editMission, budget: text })}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              <Text className="text-gray-600 mb-2">Urgence</Text>
+              <View className="flex-row mb-4">
+                <TouchableOpacity
+                  onPress={() => setEditMission({ ...editMission, urgency: 'low' })}
+                  className={`flex-1 py-3 rounded-xl mr-2 items-center ${editMission.urgency === 'low' ? 'bg-green-500' : 'bg-gray-100'}`}
+                >
+                  <Text className={editMission.urgency === 'low' ? 'text-white font-medium' : 'text-gray-600'}>Normal</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setEditMission({ ...editMission, urgency: 'medium' })}
+                  className={`flex-1 py-3 rounded-xl mx-1 items-center ${editMission.urgency === 'medium' ? 'bg-orange-500' : 'bg-gray-100'}`}
+                >
+                  <Text className={editMission.urgency === 'medium' ? 'text-white font-medium' : 'text-gray-600'}>Moyenne</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setEditMission({ ...editMission, urgency: 'high' })}
+                  className={`flex-1 py-3 rounded-xl ml-2 items-center ${editMission.urgency === 'high' ? 'bg-red-500' : 'bg-gray-100'}`}
+                >
+                  <Text className={editMission.urgency === 'high' ? 'text-white font-medium' : 'text-gray-600'}>Urgente</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text className="text-gray-600 mb-2">Statut</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
+                {(['proposed', 'accepted', 'in_progress', 'completed', 'rejected'] as const).map((status) => (
+                  <TouchableOpacity
+                    key={status}
+                    onPress={() => setEditMission({ ...editMission, status })}
+                    className={`px-4 py-2 rounded-lg mr-2 ${editMission.status === status ? 
+                      status === 'completed' ? 'bg-green-500' :
+                      status === 'accepted' ? 'bg-blue-500' :
+                      status === 'in_progress' ? 'bg-purple-500' :
+                      status === 'rejected' ? 'bg-red-500' : 'bg-orange-500'
+                      : 'bg-gray-100'}`}
+                  >
+                    <Text className={editMission.status === status ? 'text-white' : 'text-gray-600'}>
+                      {status === 'proposed' ? 'Proposée' :
+                       status === 'accepted' ? 'Acceptée' :
+                       status === 'in_progress' ? 'En cours' :
+                       status === 'completed' ? 'Terminée' : 'Refusée'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <Text className="text-gray-600 mb-2">Assigner à</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
+                <TouchableOpacity
+                  onPress={() => setEditMission({ ...editMission, assignedToUserId: null })}
+                  className={`px-4 py-2 rounded-lg mr-2 ${!editMission.assignedToUserId ? 'bg-[#B8C901]' : 'bg-gray-100'}`}
+                >
+                  <Text className={!editMission.assignedToUserId ? 'text-white' : 'text-gray-600'}>Non assignée</Text>
+                </TouchableOpacity>
+                {technicians.map((tech) => (
+                  <TouchableOpacity
+                    key={tech.id}
+                    onPress={() => setEditMission({ ...editMission, assignedToUserId: tech.id })}
+                    className={`px-4 py-2 rounded-lg mr-2 ${editMission.assignedToUserId === tech.id ? 'bg-[#B8C901]' : 'bg-gray-100'}`}
+                  >
+                    <Text className={editMission.assignedToUserId === tech.id ? 'text-white' : 'text-gray-600'}>
+                      {tech.firstName} {tech.lastName}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <TouchableOpacity
+                onPress={handleUpdateMission}
+                disabled={creating}
+                className={`py-4 rounded-xl items-center ${creating ? 'bg-[#B8C901]/50' : 'bg-[#B8C901]'}`}
+              >
+                {creating ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text className="text-white font-semibold">Enregistrer les modifications</Text>
                 )}
               </TouchableOpacity>
 

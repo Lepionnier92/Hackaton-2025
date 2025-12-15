@@ -1,4 +1,4 @@
-import * as SQLite from 'expo-sqlite';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Types
 export interface DBUser {
@@ -43,7 +43,6 @@ export interface Conversation {
   unreadCount?: number;
 }
 
-// Missions assigned by admin
 export interface DBMission {
   id: number;
   title: string;
@@ -62,186 +61,148 @@ export interface DBMission {
   createdAt: string;
 }
 
+// Storage keys
+const KEYS = {
+  USERS: '@tenex_users',
+  FRIEND_REQUESTS: '@tenex_friend_requests',
+  CONVERSATIONS: '@tenex_conversations',
+  MESSAGES: '@tenex_messages',
+  MISSIONS: '@tenex_missions',
+  INITIALIZED: '@tenex_initialized',
+};
+
 class DatabaseService {
-  private db: SQLite.SQLiteDatabase | null = null;
+  private nextUserId = 1;
+  private nextRequestId = 1;
+  private nextConversationId = 1;
+  private nextMessageId = 1;
+  private nextMissionId = 1;
 
   async init(): Promise<void> {
-    this.db = await SQLite.openDatabaseAsync('tenex_workforce.db');
-    await this.createTables();
-    await this.seedDefaultData();
+    const initialized = await AsyncStorage.getItem(KEYS.INITIALIZED);
+    if (!initialized) {
+      await this.seedDefaultData();
+      await AsyncStorage.setItem(KEYS.INITIALIZED, 'true');
+    } else {
+      // Load current IDs
+      await this.loadNextIds();
+    }
   }
 
-  private async createTables(): Promise<void> {
-    if (!this.db) return;
+  private async loadNextIds(): Promise<void> {
+    const users = await this.getAllUsers();
+    const requests = await this.getAllFriendRequests();
+    const conversations = await this.getAllConversations();
+    const messages = await this.getAllMessages();
+    const missions = await this.getAllMissions();
 
-    // Users table
-    await this.db.execAsync(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        firstName TEXT NOT NULL,
-        lastName TEXT NOT NULL,
-        email TEXT NOT NULL,
-        role TEXT DEFAULT 'technician',
-        profilePicture TEXT,
-        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
-    // Friend requests table
-    await this.db.execAsync(`
-      CREATE TABLE IF NOT EXISTS friend_requests (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        fromUserId INTEGER NOT NULL,
-        toUserId INTEGER NOT NULL,
-        status TEXT DEFAULT 'pending',
-        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (fromUserId) REFERENCES users(id),
-        FOREIGN KEY (toUserId) REFERENCES users(id)
-      );
-    `);
-
-    // Conversations table
-    await this.db.execAsync(`
-      CREATE TABLE IF NOT EXISTS conversations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user1Id INTEGER NOT NULL,
-        user2Id INTEGER NOT NULL,
-        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
-        lastMessageAt TEXT DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user1Id) REFERENCES users(id),
-        FOREIGN KEY (user2Id) REFERENCES users(id)
-      );
-    `);
-
-    // Messages table
-    await this.db.execAsync(`
-      CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        conversationId INTEGER NOT NULL,
-        senderId INTEGER NOT NULL,
-        content TEXT NOT NULL,
-        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
-        read INTEGER DEFAULT 0,
-        FOREIGN KEY (conversationId) REFERENCES conversations(id),
-        FOREIGN KEY (senderId) REFERENCES users(id)
-      );
-    `);
-
-    // Missions table
-    await this.db.execAsync(`
-      CREATE TABLE IF NOT EXISTS missions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        description TEXT,
-        location TEXT,
-        address TEXT,
-        startDate TEXT,
-        endDate TEXT,
-        duration INTEGER,
-        budget REAL,
-        urgency TEXT DEFAULT 'medium',
-        skills TEXT,
-        status TEXT DEFAULT 'proposed',
-        assignedToUserId INTEGER,
-        createdByUserId INTEGER NOT NULL,
-        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (assignedToUserId) REFERENCES users(id),
-        FOREIGN KEY (createdByUserId) REFERENCES users(id)
-      );
-    `);
+    this.nextUserId = Math.max(...users.map(u => u.id), 0) + 1;
+    this.nextRequestId = Math.max(...requests.map(r => r.id), 0) + 1;
+    this.nextConversationId = Math.max(...conversations.map(c => c.id), 0) + 1;
+    this.nextMessageId = Math.max(...messages.map(m => m.id), 0) + 1;
+    this.nextMissionId = Math.max(...missions.map(m => m.id), 0) + 1;
   }
 
   private async seedDefaultData(): Promise<void> {
-    if (!this.db) return;
+    const defaultUsers: DBUser[] = [
+      {
+        id: 1,
+        username: 'admin',
+        password: 'admin123',
+        firstName: 'Admin',
+        lastName: 'TENEX',
+        email: 'admin@tenex.fr',
+        role: 'admin',
+        profilePicture: 'https://i.pravatar.cc/150?u=admin',
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: 2,
+        username: 'tech',
+        password: 'tech123',
+        firstName: 'Jean',
+        lastName: 'Dupont',
+        email: 'jean.dupont@email.com',
+        role: 'technician',
+        profilePicture: 'https://i.pravatar.cc/150?u=jean',
+        createdAt: new Date().toISOString(),
+      },
+    ];
 
-    // Check if admin exists
-    const existingAdmin = await this.db.getFirstAsync<DBUser>(
-      'SELECT * FROM users WHERE username = ?',
-      ['admin']
-    );
+    await AsyncStorage.setItem(KEYS.USERS, JSON.stringify(defaultUsers));
+    await AsyncStorage.setItem(KEYS.FRIEND_REQUESTS, JSON.stringify([]));
+    await AsyncStorage.setItem(KEYS.CONVERSATIONS, JSON.stringify([]));
+    await AsyncStorage.setItem(KEYS.MESSAGES, JSON.stringify([]));
+    await AsyncStorage.setItem(KEYS.MISSIONS, JSON.stringify([]));
 
-    if (!existingAdmin) {
-      // Create default admin
-      await this.db.runAsync(
-        `INSERT INTO users (username, password, firstName, lastName, email, role) VALUES (?, ?, ?, ?, ?, ?)`,
-        ['admin', 'admin123', 'Admin', 'TENEX', 'admin@tenex.fr', 'admin']
-      );
-
-      // Create demo technician
-      await this.db.runAsync(
-        `INSERT INTO users (username, password, firstName, lastName, email, role, profilePicture) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        ['tech', 'tech123', 'Jean', 'Dupont', 'jean.dupont@email.com', 'technician', 'https://i.pravatar.cc/150?u=jean']
-      );
-    }
+    this.nextUserId = 3;
   }
 
   // ==================== USER METHODS ====================
 
   async login(username: string, password: string): Promise<DBUser | null> {
-    if (!this.db) return null;
-    return await this.db.getFirstAsync<DBUser>(
-      'SELECT * FROM users WHERE username = ? AND password = ?',
-      [username, password]
-    );
+    const users = await this.getAllUsers();
+    return users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === password) || null;
   }
 
   async getUserById(id: number): Promise<DBUser | null> {
-    if (!this.db) return null;
-    return await this.db.getFirstAsync<DBUser>(
-      'SELECT * FROM users WHERE id = ?',
-      [id]
-    );
+    const users = await this.getAllUsers();
+    return users.find(u => u.id === id) || null;
   }
 
   async searchUsersByUsername(query: string, currentUserId: number): Promise<DBUser[]> {
-    if (!this.db) return [];
-    return await this.db.getAllAsync<DBUser>(
-      'SELECT * FROM users WHERE username LIKE ? AND id != ? LIMIT 20',
-      [`%${query}%`, currentUserId]
-    );
+    const users = await this.getAllUsers();
+    return users.filter(u => 
+      u.username.toLowerCase().includes(query.toLowerCase()) && u.id !== currentUserId
+    ).slice(0, 20);
   }
 
   async createUser(user: Omit<DBUser, 'id' | 'createdAt'>): Promise<number> {
-    if (!this.db) return -1;
-    const result = await this.db.runAsync(
-      `INSERT INTO users (username, password, firstName, lastName, email, role, profilePicture) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [user.username, user.password, user.firstName, user.lastName, user.email, user.role, user.profilePicture]
-    );
-    return result.lastInsertRowId;
+    const users = await this.getAllUsers();
+    const newUser: DBUser = {
+      ...user,
+      id: this.nextUserId++,
+      createdAt: new Date().toISOString(),
+    };
+    users.push(newUser);
+    await AsyncStorage.setItem(KEYS.USERS, JSON.stringify(users));
+    return newUser.id;
   }
 
   async updateUser(id: number, updates: Partial<DBUser>): Promise<void> {
-    if (!this.db) return;
-    const fields = Object.keys(updates).filter(k => k !== 'id' && k !== 'createdAt');
-    const values = fields.map(f => (updates as any)[f]);
-    const setClause = fields.map(f => `${f} = ?`).join(', ');
-    await this.db.runAsync(
-      `UPDATE users SET ${setClause} WHERE id = ?`,
-      [...values, id]
-    );
+    const users = await this.getAllUsers();
+    const index = users.findIndex(u => u.id === id);
+    if (index !== -1) {
+      users[index] = { ...users[index], ...updates };
+      await AsyncStorage.setItem(KEYS.USERS, JSON.stringify(users));
+    }
   }
 
   async getAllUsers(): Promise<DBUser[]> {
-    if (!this.db) return [];
-    return await this.db.getAllAsync<DBUser>('SELECT * FROM users ORDER BY createdAt DESC');
+    const data = await AsyncStorage.getItem(KEYS.USERS);
+    return data ? JSON.parse(data) : [];
   }
 
   async deleteUser(id: number): Promise<void> {
-    if (!this.db) return;
-    await this.db.runAsync('DELETE FROM users WHERE id = ?', [id]);
+    const users = await this.getAllUsers();
+    const filtered = users.filter(u => u.id !== id);
+    await AsyncStorage.setItem(KEYS.USERS, JSON.stringify(filtered));
   }
 
   // ==================== FRIEND REQUEST METHODS ====================
 
+  private async getAllFriendRequests(): Promise<FriendRequest[]> {
+    const data = await AsyncStorage.getItem(KEYS.FRIEND_REQUESTS);
+    return data ? JSON.parse(data) : [];
+  }
+
   async sendFriendRequest(fromUserId: number, toUserId: number): Promise<number> {
-    if (!this.db) return -1;
+    const requests = await this.getAllFriendRequests();
     
     // Check if request already exists
-    const existing = await this.db.getFirstAsync<FriendRequest>(
-      'SELECT * FROM friend_requests WHERE (fromUserId = ? AND toUserId = ?) OR (fromUserId = ? AND toUserId = ?)',
-      [fromUserId, toUserId, toUserId, fromUserId]
+    const existing = requests.find(r => 
+      (r.fromUserId === fromUserId && r.toUserId === toUserId) ||
+      (r.fromUserId === toUserId && r.toUserId === fromUserId)
     );
     
     if (existing) {
@@ -249,215 +210,245 @@ class DatabaseService {
     }
 
     // Check if already friends
-    const existingConv = await this.db.getFirstAsync<Conversation>(
-      'SELECT * FROM conversations WHERE (user1Id = ? AND user2Id = ?) OR (user1Id = ? AND user2Id = ?)',
-      [fromUserId, toUserId, toUserId, fromUserId]
+    const conversations = await this.getAllConversations();
+    const existingConv = conversations.find(c =>
+      (c.user1Id === fromUserId && c.user2Id === toUserId) ||
+      (c.user1Id === toUserId && c.user2Id === fromUserId)
     );
 
     if (existingConv) {
       throw new Error('Vous êtes déjà amis');
     }
 
-    const result = await this.db.runAsync(
-      'INSERT INTO friend_requests (fromUserId, toUserId) VALUES (?, ?)',
-      [fromUserId, toUserId]
-    );
-    return result.lastInsertRowId;
+    const newRequest: FriendRequest = {
+      id: this.nextRequestId++,
+      fromUserId,
+      toUserId,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+    
+    requests.push(newRequest);
+    await AsyncStorage.setItem(KEYS.FRIEND_REQUESTS, JSON.stringify(requests));
+    return newRequest.id;
   }
 
   async getPendingFriendRequests(userId: number): Promise<FriendRequest[]> {
-    if (!this.db) return [];
-    const requests = await this.db.getAllAsync<FriendRequest & { fromUsername: string; fromFirstName: string; fromLastName: string; fromProfilePicture: string }>(
-      `SELECT fr.*, u.username as fromUsername, u.firstName as fromFirstName, u.lastName as fromLastName, u.profilePicture as fromProfilePicture
-       FROM friend_requests fr
-       JOIN users u ON fr.fromUserId = u.id
-       WHERE fr.toUserId = ? AND fr.status = 'pending'
-       ORDER BY fr.createdAt DESC`,
-      [userId]
-    );
+    const requests = await this.getAllFriendRequests();
+    const users = await this.getAllUsers();
     
-    return requests.map(r => ({
-      ...r,
-      fromUser: {
-        id: r.fromUserId,
-        username: r.fromUsername,
-        firstName: r.fromFirstName,
-        lastName: r.fromLastName,
-        profilePicture: r.fromProfilePicture,
-      } as DBUser
-    }));
+    return requests
+      .filter(r => r.toUserId === userId && r.status === 'pending')
+      .map(r => ({
+        ...r,
+        fromUser: users.find(u => u.id === r.fromUserId),
+      }))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   async getSentFriendRequests(userId: number): Promise<FriendRequest[]> {
-    if (!this.db) return [];
-    return await this.db.getAllAsync<FriendRequest>(
-      `SELECT fr.*, u.username as toUsername, u.firstName as toFirstName, u.lastName as toLastName
-       FROM friend_requests fr
-       JOIN users u ON fr.toUserId = u.id
-       WHERE fr.fromUserId = ? AND fr.status = 'pending'`,
-      [userId]
-    );
+    const requests = await this.getAllFriendRequests();
+    const users = await this.getAllUsers();
+    
+    return requests
+      .filter(r => r.fromUserId === userId && r.status === 'pending')
+      .map(r => ({
+        ...r,
+        toUser: users.find(u => u.id === r.toUserId),
+      }));
   }
 
   async acceptFriendRequest(requestId: number, userId: number): Promise<number> {
-    if (!this.db) return -1;
+    const requests = await this.getAllFriendRequests();
+    const index = requests.findIndex(r => r.id === requestId && r.toUserId === userId);
     
-    const request = await this.db.getFirstAsync<FriendRequest>(
-      'SELECT * FROM friend_requests WHERE id = ? AND toUserId = ?',
-      [requestId, userId]
-    );
-    
-    if (!request) {
+    if (index === -1) {
       throw new Error('Demande non trouvée');
     }
 
-    // Update request status
-    await this.db.runAsync(
-      'UPDATE friend_requests SET status = ? WHERE id = ?',
-      ['accepted', requestId]
-    );
+    const request = requests[index];
+    requests[index] = { ...request, status: 'accepted' };
+    await AsyncStorage.setItem(KEYS.FRIEND_REQUESTS, JSON.stringify(requests));
 
     // Create conversation
-    const result = await this.db.runAsync(
-      'INSERT INTO conversations (user1Id, user2Id) VALUES (?, ?)',
-      [request.fromUserId, request.toUserId]
-    );
+    const conversations = await this.getAllConversations();
+    const newConversation: Conversation = {
+      id: this.nextConversationId++,
+      user1Id: request.fromUserId,
+      user2Id: request.toUserId,
+      createdAt: new Date().toISOString(),
+      lastMessageAt: new Date().toISOString(),
+    };
+    conversations.push(newConversation);
+    await AsyncStorage.setItem(KEYS.CONVERSATIONS, JSON.stringify(conversations));
 
-    return result.lastInsertRowId;
+    return newConversation.id;
   }
 
   async rejectFriendRequest(requestId: number, userId: number): Promise<void> {
-    if (!this.db) return;
-    await this.db.runAsync(
-      'UPDATE friend_requests SET status = ? WHERE id = ? AND toUserId = ?',
-      ['rejected', requestId, userId]
-    );
+    const requests = await this.getAllFriendRequests();
+    const index = requests.findIndex(r => r.id === requestId && r.toUserId === userId);
+    
+    if (index !== -1) {
+      requests[index] = { ...requests[index], status: 'rejected' };
+      await AsyncStorage.setItem(KEYS.FRIEND_REQUESTS, JSON.stringify(requests));
+    }
   }
 
   // ==================== CONVERSATION & MESSAGE METHODS ====================
 
+  private async getAllConversations(): Promise<Conversation[]> {
+    const data = await AsyncStorage.getItem(KEYS.CONVERSATIONS);
+    return data ? JSON.parse(data) : [];
+  }
+
+  private async getAllMessages(): Promise<DBMessage[]> {
+    const data = await AsyncStorage.getItem(KEYS.MESSAGES);
+    return data ? JSON.parse(data) : [];
+  }
+
   async getConversations(userId: number): Promise<Conversation[]> {
-    if (!this.db) return [];
+    const conversations = await this.getAllConversations();
+    const users = await this.getAllUsers();
+    const messages = await this.getAllMessages();
     
-    const conversations = await this.db.getAllAsync<Conversation & { otherUserId: number; otherUsername: string; otherFirstName: string; otherLastName: string; otherProfilePicture: string }>(
-      `SELECT c.*,
-        CASE WHEN c.user1Id = ? THEN c.user2Id ELSE c.user1Id END as otherUserId,
-        CASE WHEN c.user1Id = ? THEN u2.username ELSE u1.username END as otherUsername,
-        CASE WHEN c.user1Id = ? THEN u2.firstName ELSE u1.firstName END as otherFirstName,
-        CASE WHEN c.user1Id = ? THEN u2.lastName ELSE u1.lastName END as otherLastName,
-        CASE WHEN c.user1Id = ? THEN u2.profilePicture ELSE u1.profilePicture END as otherProfilePicture
-       FROM conversations c
-       JOIN users u1 ON c.user1Id = u1.id
-       JOIN users u2 ON c.user2Id = u2.id
-       WHERE c.user1Id = ? OR c.user2Id = ?
-       ORDER BY c.lastMessageAt DESC`,
-      [userId, userId, userId, userId, userId, userId, userId]
-    );
+    return conversations
+      .filter(c => c.user1Id === userId || c.user2Id === userId)
+      .map(c => {
+        const otherUserId = c.user1Id === userId ? c.user2Id : c.user1Id;
+        const conversationMessages = messages.filter(m => m.conversationId === c.id);
+        const lastMessage = conversationMessages.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )[0];
+        const unreadCount = conversationMessages.filter(m => 
+          m.senderId !== userId && !m.read
+        ).length;
 
-    // Get last message and unread count for each conversation
-    const result: Conversation[] = [];
-    for (const conv of conversations) {
-      const lastMessage = await this.db.getFirstAsync<DBMessage>(
-        'SELECT * FROM messages WHERE conversationId = ? ORDER BY createdAt DESC LIMIT 1',
-        [conv.id]
-      );
-      
-      const unreadResult = await this.db.getFirstAsync<{ count: number }>(
-        'SELECT COUNT(*) as count FROM messages WHERE conversationId = ? AND senderId != ? AND read = 0',
-        [conv.id, userId]
-      );
-
-      result.push({
-        ...conv,
-        otherUser: {
-          id: conv.otherUserId,
-          username: conv.otherUsername,
-          firstName: conv.otherFirstName,
-          lastName: conv.otherLastName,
-          profilePicture: conv.otherProfilePicture,
-        } as DBUser,
-        lastMessage: lastMessage || undefined,
-        unreadCount: unreadResult?.count || 0,
-      });
-    }
-
-    return result;
+        return {
+          ...c,
+          otherUser: users.find(u => u.id === otherUserId),
+          lastMessage,
+          unreadCount,
+        };
+      })
+      .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
   }
 
   async getMessages(conversationId: number): Promise<DBMessage[]> {
-    if (!this.db) return [];
-    return await this.db.getAllAsync<DBMessage>(
-      'SELECT * FROM messages WHERE conversationId = ? ORDER BY createdAt ASC',
-      [conversationId]
-    );
+    const messages = await this.getAllMessages();
+    return messages
+      .filter(m => m.conversationId === conversationId)
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   }
 
   async sendMessage(conversationId: number, senderId: number, content: string): Promise<number> {
-    if (!this.db) return -1;
-    
-    const result = await this.db.runAsync(
-      'INSERT INTO messages (conversationId, senderId, content) VALUES (?, ?, ?)',
-      [conversationId, senderId, content]
-    );
+    const messages = await this.getAllMessages();
+    const newMessage: DBMessage = {
+      id: this.nextMessageId++,
+      conversationId,
+      senderId,
+      content,
+      createdAt: new Date().toISOString(),
+      read: false,
+    };
+    messages.push(newMessage);
+    await AsyncStorage.setItem(KEYS.MESSAGES, JSON.stringify(messages));
 
     // Update conversation lastMessageAt
-    await this.db.runAsync(
-      'UPDATE conversations SET lastMessageAt = CURRENT_TIMESTAMP WHERE id = ?',
-      [conversationId]
-    );
+    const conversations = await this.getAllConversations();
+    const index = conversations.findIndex(c => c.id === conversationId);
+    if (index !== -1) {
+      conversations[index] = { ...conversations[index], lastMessageAt: new Date().toISOString() };
+      await AsyncStorage.setItem(KEYS.CONVERSATIONS, JSON.stringify(conversations));
+    }
 
-    return result.lastInsertRowId;
+    return newMessage.id;
   }
 
   async markMessagesAsRead(conversationId: number, userId: number): Promise<void> {
-    if (!this.db) return;
-    await this.db.runAsync(
-      'UPDATE messages SET read = 1 WHERE conversationId = ? AND senderId != ?',
-      [conversationId, userId]
-    );
+    const messages = await this.getAllMessages();
+    const updated = messages.map(m => {
+      if (m.conversationId === conversationId && m.senderId !== userId && !m.read) {
+        return { ...m, read: true };
+      }
+      return m;
+    });
+    await AsyncStorage.setItem(KEYS.MESSAGES, JSON.stringify(updated));
   }
 
   // ==================== MISSION METHODS ====================
 
   async getMissionsForUser(userId: number): Promise<DBMission[]> {
-    if (!this.db) return [];
-    return await this.db.getAllAsync<DBMission>(
-      'SELECT * FROM missions WHERE assignedToUserId = ? ORDER BY createdAt DESC',
-      [userId]
-    );
+    const missions = await this.getAllMissions();
+    return missions
+      .filter(m => m.assignedToUserId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   async getAllMissions(): Promise<DBMission[]> {
-    if (!this.db) return [];
-    return await this.db.getAllAsync<DBMission>(
-      'SELECT * FROM missions ORDER BY createdAt DESC'
-    );
+    const data = await AsyncStorage.getItem(KEYS.MISSIONS);
+    return data ? JSON.parse(data) : [];
   }
 
   async createMission(mission: Omit<DBMission, 'id' | 'createdAt'>): Promise<number> {
-    if (!this.db) return -1;
-    const result = await this.db.runAsync(
-      `INSERT INTO missions (title, description, location, address, startDate, endDate, duration, budget, urgency, skills, status, assignedToUserId, createdByUserId)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [mission.title, mission.description, mission.location, mission.address, mission.startDate, mission.endDate, mission.duration, mission.budget, mission.urgency, mission.skills, mission.status, mission.assignedToUserId, mission.createdByUserId]
-    );
-    return result.lastInsertRowId;
+    const missions = await this.getAllMissions();
+    const newMission: DBMission = {
+      ...mission,
+      id: this.nextMissionId++,
+      createdAt: new Date().toISOString(),
+    };
+    missions.push(newMission);
+    await AsyncStorage.setItem(KEYS.MISSIONS, JSON.stringify(missions));
+    return newMission.id;
   }
 
   async updateMissionStatus(missionId: number, status: DBMission['status']): Promise<void> {
-    if (!this.db) return;
-    await this.db.runAsync(
-      'UPDATE missions SET status = ? WHERE id = ?',
-      [status, missionId]
-    );
+    const missions = await this.getAllMissions();
+    const index = missions.findIndex(m => m.id === missionId);
+    if (index !== -1) {
+      missions[index] = { ...missions[index], status };
+      await AsyncStorage.setItem(KEYS.MISSIONS, JSON.stringify(missions));
+    }
   }
 
   async assignMission(missionId: number, userId: number): Promise<void> {
-    if (!this.db) return;
-    await this.db.runAsync(
-      'UPDATE missions SET assignedToUserId = ?, status = ? WHERE id = ?',
-      [userId, 'proposed', missionId]
-    );
+    const missions = await this.getAllMissions();
+    const index = missions.findIndex(m => m.id === missionId);
+    if (index !== -1) {
+      missions[index] = { ...missions[index], assignedToUserId: userId, status: 'proposed' };
+      await AsyncStorage.setItem(KEYS.MISSIONS, JSON.stringify(missions));
+    }
+  }
+
+  async deleteMission(missionId: number): Promise<void> {
+    const missions = await this.getAllMissions();
+    const filtered = missions.filter(m => m.id !== missionId);
+    await AsyncStorage.setItem(KEYS.MISSIONS, JSON.stringify(filtered));
+  }
+
+  async updateMission(missionId: number, updates: Partial<DBMission>): Promise<void> {
+    const missions = await this.getAllMissions();
+    const index = missions.findIndex(m => m.id === missionId);
+    if (index !== -1) {
+      missions[index] = { ...missions[index], ...updates };
+      await AsyncStorage.setItem(KEYS.MISSIONS, JSON.stringify(missions));
+    }
+  }
+
+  async getMissionById(missionId: number): Promise<DBMission | null> {
+    const missions = await this.getAllMissions();
+    return missions.find(m => m.id === missionId) || null;
+  }
+
+  // Reset database (for testing)
+  async resetDatabase(): Promise<void> {
+    await AsyncStorage.removeItem(KEYS.INITIALIZED);
+    await AsyncStorage.removeItem(KEYS.USERS);
+    await AsyncStorage.removeItem(KEYS.FRIEND_REQUESTS);
+    await AsyncStorage.removeItem(KEYS.CONVERSATIONS);
+    await AsyncStorage.removeItem(KEYS.MESSAGES);
+    await AsyncStorage.removeItem(KEYS.MISSIONS);
+    await this.init();
   }
 }
 
