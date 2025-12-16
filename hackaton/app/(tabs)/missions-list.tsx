@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -63,25 +63,33 @@ export default function MissionsListScreen() {
   };
 
   const handleReject = async (missionId: number) => {
-    Alert.alert(
-      'Refuser la mission',
-      'Êtes-vous sûr de vouloir refuser cette mission ?',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Refuser',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await db.updateMissionStatus(missionId, 'rejected');
-              loadMissions();
-            } catch (error) {
-              Alert.alert('Erreur', 'Impossible de refuser la mission');
-            }
-          },
-        },
-      ]
-    );
+    const doReject = async () => {
+      try {
+        await db.updateMissionStatus(missionId, 'rejected');
+        loadMissions();
+      } catch (error) {
+        if (Platform.OS === 'web') {
+          window.alert('Impossible de refuser la mission');
+        } else {
+          Alert.alert('Erreur', 'Impossible de refuser la mission');
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Êtes-vous sûr de vouloir refuser cette mission ?')) {
+        await doReject();
+      }
+    } else {
+      Alert.alert(
+        'Refuser la mission',
+        'Êtes-vous sûr de vouloir refuser cette mission ?',
+        [
+          { text: 'Annuler', style: 'cancel' },
+          { text: 'Refuser', style: 'destructive', onPress: doReject },
+        ]
+      );
+    }
   };
 
   const handleStart = async (missionId: number) => {
@@ -95,25 +103,38 @@ export default function MissionsListScreen() {
   };
 
   const handleComplete = async (missionId: number) => {
-    Alert.alert(
-      'Terminer la mission',
-      'Confirmer que la mission est terminée ?',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Confirmer',
-          onPress: async () => {
-            try {
-              await db.updateMissionStatus(missionId, 'completed');
-              Alert.alert('Succès', 'Mission terminée !');
-              loadMissions();
-            } catch (error) {
-              Alert.alert('Erreur', 'Impossible de terminer la mission');
-            }
-          },
-        },
-      ]
-    );
+    const doComplete = async () => {
+      try {
+        await db.updateMissionStatus(missionId, 'completed');
+        if (Platform.OS === 'web') {
+          window.alert('Mission terminée !');
+        } else {
+          Alert.alert('Succès', 'Mission terminée !');
+        }
+        loadMissions();
+      } catch (error) {
+        if (Platform.OS === 'web') {
+          window.alert('Impossible de terminer la mission');
+        } else {
+          Alert.alert('Erreur', 'Impossible de terminer la mission');
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Confirmer que la mission est terminée ?')) {
+        await doComplete();
+      }
+    } else {
+      Alert.alert(
+        'Terminer la mission',
+        'Confirmer que la mission est terminée ?',
+        [
+          { text: 'Annuler', style: 'cancel' },
+          { text: 'Confirmer', onPress: doComplete },
+        ]
+      );
+    }
   };
 
   const getUrgencyColor = (urgency: string) => {

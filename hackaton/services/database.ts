@@ -114,9 +114,101 @@ const KEYS = {
   MISSIONS: '@tenex_missions',
   PAYSLIPS: '@tenex_payslips',
   INITIALIZED: '@tenex_initialized',
+  NEXT_USER_ID: '@tenex_nextUserId',
 };
 
 class DatabaseService {
+        /**
+         * Supprime un message d'une conversation (seul l'auteur peut supprimer)
+         */
+        async deleteMessage(messageId: number, userId: number): Promise<void> {
+          const messages = await this.getAllMessages();
+          const index = messages.findIndex(m => m.id === messageId && m.senderId === userId);
+          if (index !== -1) {
+            messages.splice(index, 1);
+            await AsyncStorage.setItem(KEYS.MESSAGES, JSON.stringify(messages));
+          } else {
+            throw new Error("Suppression non autorisée");
+          }
+        }
+      /**
+       * Envoie une demande d'ami à un utilisateur via son nom d'utilisateur.
+       * @param fromUserId L'utilisateur qui envoie la demande
+       * @param toUsername Le nom d'utilisateur du destinataire
+       */
+      async sendFriendRequestByUsername(fromUserId: number, toUsername: string): Promise<number> {
+        const users = await this.getAllUsers();
+        const toUser = users.find(u => u.username.toLowerCase() === toUsername.toLowerCase());
+        if (!toUser) {
+          throw new Error("Utilisateur introuvable");
+        }
+        if (toUser.id === fromUserId) {
+          throw new Error("Vous ne pouvez pas vous ajouter vous-même");
+        }
+        return this.sendFriendRequest(fromUserId, toUser.id);
+      }
+    /**
+     * Assigne automatiquement les missions non attribuées aux utilisateurs en fonction de la localisation, du métier et des certifications.
+     * Critères :
+     *   - Localisation (mission.location == user.availabilityZones OU user.location)
+     *   - Métier (mission.skills ou mission.title inclus dans user.jobTitle)
+     *   - Diplômes/Certifications (mission.skills inclus dans user.certifications)
+     *   - Statut disponible
+     * Attribution au meilleur score (pondération simple)
+     */
+    async autoAssignMissions(): Promise<{ missionId: number; userId: number }[]> {
+      const missions = await this.getAllMissions();
+      const users = await this.getAllUsers();
+      const assignments: { missionId: number; userId: number }[] = [];
+
+      // Pour chaque mission non attribuée
+      for (const mission of missions) {
+        if (mission.assignedToUserId) continue;
+
+        let bestScore = 0;
+        let bestUser: DBUser | null = null;
+
+        for (const user of users) {
+          if (user.role !== 'technician' || user.availabilityStatus !== 'available') continue;
+
+          let score = 0;
+
+          // 1. Localisation
+          if (user.availabilityZones && user.availabilityZones.includes(mission.location)) {
+            score += 3;
+          } else if (user.location && mission.location && user.location === mission.location) {
+            score += 2;
+          }
+
+          // 2. Métier
+          if (user.jobTitle && (mission.title?.toLowerCase().includes(user.jobTitle.toLowerCase()) || (mission.skills && user.jobTitle.toLowerCase().includes(mission.skills.toLowerCase())))) {
+            score += 2;
+          }
+
+          // 3. Diplômes/Certifications
+          if (user.certifications && mission.skills) {
+            const missionSkills = mission.skills.split(',').map(s => s.trim().toLowerCase());
+            const userCerts = user.certifications.map(c => c.toLowerCase());
+            const match = missionSkills.some(skill => userCerts.includes(skill));
+            if (match) score += 2;
+          }
+
+          // 4. Disponibilité (optionnel: maxDistance, créneau horaire...)
+          // TODO: Ajouter d'autres critères si besoin
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestUser = user;
+          }
+        }
+
+        if (bestUser && bestScore > 0) {
+          await this.assignMission(mission.id, bestUser.id);
+          assignments.push({ missionId: mission.id, userId: bestUser.id });
+        }
+      }
+      return assignments;
+    }
   private nextUserId = 1;
   private nextRequestId = 1;
   private nextConversationId = 1;
@@ -152,222 +244,17 @@ class DatabaseService {
   }
 
   private async seedDefaultData(): Promise<void> {
-    const defaultUsers: DBUser[] = [
-      {
-        id: 1,
-        username: 'admin',
-        password: 'admin123',
-        firstName: 'Admin',
-        lastName: 'TENEX',
-        email: 'admin@tenex.fr',
-        phone: '+33 1 23 45 67 89',
-        role: 'admin',
-        profilePicture: 'https://i.pravatar.cc/150?u=admin',
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: 2,
-        username: 'tech',
-        password: 'tech123',
-        firstName: 'Jean',
-        lastName: 'Dupont',
-        email: 'jean.dupont@email.com',
-        phone: '+33 6 12 34 56 78',
-        role: 'technician',
-        profilePicture: 'https://i.pravatar.cc/150?u=jean',
-        createdAt: new Date().toISOString(),
-        // Données technicien complètes
-        skills: ['Électricité', 'Plomberie', 'Climatisation', 'Chauffage'],
-        certifications: ['Habilitation électrique BR', 'QualiPAC', 'RGE'],
-        experience: 8,
-        bio: 'Technicien polyvalent avec 8 ans d\'expérience dans la maintenance industrielle et résidentielle.',
-        availableDays: ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'],
-        availableTimeSlots: 'Journée complète',
-        maxDistance: 50,
-        availabilityZones: ['Paris', 'Île-de-France', 'Hauts-de-Seine'],
-        availabilityStatus: 'available',
-        jobTitle: 'Technicien de maintenance',
-        hourlyRate: 35,
-        vehicleType: 'Voiture',
-        hasDriverLicense: true,
-      },
-      {
-        id: 3,
-        username: 'marie',
-        password: 'marie123',
-        firstName: 'Marie',
-        lastName: 'Martin',
-        email: 'marie.martin@email.com',
-        phone: '+33 6 98 76 54 32',
-        role: 'technician',
-        profilePicture: 'https://i.pravatar.cc/150?u=marie',
-        createdAt: new Date().toISOString(),
-        skills: ['Informatique', 'Réseaux', 'Fibre optique', 'Téléphonie'],
-        certifications: ['CCNA', 'Fibre optique FTTH'],
-        experience: 5,
-        bio: 'Technicienne spécialisée en télécoms et réseaux.',
-        availableDays: ['Lundi', 'Mardi', 'Mercredi', 'Jeudi'],
-        availableTimeSlots: 'Matin',
-        maxDistance: 30,
-        availabilityZones: ['Lyon', 'Rhône-Alpes'],
-        availabilityStatus: 'available',
-        jobTitle: 'Technicienne Télécom',
-        hourlyRate: 32,
-        vehicleType: 'Voiture',
-        hasDriverLicense: true,
-      },
-    ];
-
-    // Missions de démo pour Jean Dupont (id: 2)
-    const defaultMissions: DBMission[] = [
-      {
-        id: 1,
-        title: 'Installation climatisation réversible',
-        description: 'Installation d\'un système de climatisation réversible dans un appartement de 80m². Le client souhaite 2 splits muraux dans les chambres et un système gainable pour le salon. Accès facile par escalier, parking disponible devant l\'immeuble.',
-        location: 'Paris 15ème',
-        address: '45 rue de Vaugirard, 75015 Paris',
-        startDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        endDate: new Date(Date.now() + 9 * 24 * 60 * 60 * 1000).toISOString(),
-        duration: 2,
-        budget: 850,
-        urgency: 'medium',
-        skills: 'Climatisation, Électricité',
-        status: 'proposed',
-        assignedToUserId: 2,
-        createdByUserId: 1,
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: 2,
-        title: 'Dépannage chauffage urgent',
-        description: 'Panne totale du système de chauffage central dans une maison individuelle. Le client n\'a plus d\'eau chaude ni de chauffage. Intervention urgente demandée.',
-        location: 'Boulogne-Billancourt',
-        address: '12 avenue Jean Jaurès, 92100 Boulogne-Billancourt',
-        startDate: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString(),
-        endDate: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString(),
-        duration: 1,
-        budget: 280,
-        urgency: 'high',
-        skills: 'Chauffage, Plomberie',
-        status: 'proposed',
-        assignedToUserId: 2,
-        createdByUserId: 1,
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: 3,
-        title: 'Maintenance préventive électrique',
-        description: 'Contrôle et maintenance préventive du tableau électrique et des installations d\'un local commercial. Vérification des normes de sécurité et remplacement des éléments défaillants si nécessaire.',
-        location: 'Neuilly-sur-Seine',
-        address: '78 avenue Charles de Gaulle, 92200 Neuilly-sur-Seine',
-        startDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-        endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-        duration: 1,
-        budget: 320,
-        urgency: 'low',
-        skills: 'Électricité',
-        status: 'proposed',
-        assignedToUserId: 2,
-        createdByUserId: 1,
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: 4,
-        title: 'Rénovation salle de bain - Plomberie',
-        description: 'Remplacement complet de la plomberie d\'une salle de bain. Installation d\'une douche à l\'italienne, d\'un lavabo double vasque et d\'un WC suspendu.',
-        location: 'Paris 16ème',
-        address: '156 avenue Victor Hugo, 75016 Paris',
-        startDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-        endDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-        duration: 3,
-        budget: 1200,
-        urgency: 'low',
-        skills: 'Plomberie',
-        status: 'completed',
-        assignedToUserId: 2,
-        createdByUserId: 1,
-        createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        id: 5,
-        title: 'Installation VMC double flux',
-        description: 'Installation d\'un système de VMC double flux dans un appartement rénové. Perçage des passages de gaines et raccordement électrique.',
-        location: 'Versailles',
-        address: '23 rue de la Paroisse, 78000 Versailles',
-        startDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-        endDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-        duration: 2,
-        budget: 680,
-        urgency: 'medium',
-        skills: 'Climatisation, Électricité',
-        status: 'completed',
-        assignedToUserId: 2,
-        createdByUserId: 1,
-        createdAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        id: 6,
-        title: 'Mise aux normes tableau électrique',
-        description: 'Mise aux normes NF C 15-100 d\'un tableau électrique vétuste dans une maison des années 70.',
-        location: 'Saint-Cloud',
-        address: '5 rue Pasteur, 92210 Saint-Cloud',
-        startDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-        endDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-        duration: 1,
-        budget: 450,
-        urgency: 'medium',
-        skills: 'Électricité',
-        status: 'accepted',
-        assignedToUserId: 2,
-        createdByUserId: 1,
-        createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-    ];
-
-    // Fiches de paie de démo
-    const defaultPaySlips: PaySlip[] = [
-      {
-        id: 1,
-        userId: 2,
-        month: 'Novembre',
-        year: 2024,
-        grossAmount: 3250,
-        netAmount: 2535,
-        missions: 4,
-        createdAt: new Date('2024-12-01').toISOString(),
-      },
-      {
-        id: 2,
-        userId: 2,
-        month: 'Octobre',
-        year: 2024,
-        grossAmount: 2890,
-        netAmount: 2254.20,
-        missions: 3,
-        createdAt: new Date('2024-11-01').toISOString(),
-      },
-      {
-        id: 3,
-        userId: 2,
-        month: 'Septembre',
-        year: 2024,
-        grossAmount: 3680,
-        netAmount: 2870.40,
-        missions: 5,
-        createdAt: new Date('2024-10-01').toISOString(),
-      },
-    ];
-
-    await AsyncStorage.setItem(KEYS.USERS, JSON.stringify(defaultUsers));
+    // Réinitialisation totale : aucun utilisateur, mission, message, conversation, fiche de paie par défaut
+    await AsyncStorage.setItem(KEYS.USERS, JSON.stringify([]));
     await AsyncStorage.setItem(KEYS.FRIEND_REQUESTS, JSON.stringify([]));
     await AsyncStorage.setItem(KEYS.CONVERSATIONS, JSON.stringify([]));
     await AsyncStorage.setItem(KEYS.MESSAGES, JSON.stringify([]));
-    await AsyncStorage.setItem(KEYS.MISSIONS, JSON.stringify(defaultMissions));
-    await AsyncStorage.setItem(KEYS.PAYSLIPS, JSON.stringify(defaultPaySlips));
+    await AsyncStorage.setItem(KEYS.MISSIONS, JSON.stringify([]));
+    await AsyncStorage.setItem(KEYS.PAYSLIPS, JSON.stringify([]));
 
-    this.nextUserId = 4;
-    this.nextMissionId = 7;
-    this.nextPaySlipId = 4;
+    this.nextUserId = 1;
+    this.nextMissionId = 1;
+    this.nextPaySlipId = 1;
   }
 
   // ==================== USER METHODS ====================
@@ -390,14 +277,23 @@ class DatabaseService {
   }
 
   async createUser(user: Omit<DBUser, 'id' | 'createdAt'>): Promise<number> {
+    // Charger le compteur d'ID depuis AsyncStorage
+    let nextId = this.nextUserId;
+    const storedId = await AsyncStorage.getItem(KEYS.NEXT_USER_ID);
+    if (storedId) {
+      nextId = parseInt(storedId, 10);
+    }
     const users = await this.getAllUsers();
     const newUser: DBUser = {
       ...user,
-      id: this.nextUserId++,
+      id: nextId,
       createdAt: new Date().toISOString(),
     };
     users.push(newUser);
     await AsyncStorage.setItem(KEYS.USERS, JSON.stringify(users));
+    // Incrémenter et sauvegarder le compteur d'ID
+    this.nextUserId = nextId + 1;
+    await AsyncStorage.setItem(KEYS.NEXT_USER_ID, String(this.nextUserId));
     return newUser.id;
   }
 

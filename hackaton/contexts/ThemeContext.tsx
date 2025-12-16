@@ -23,7 +23,7 @@ export interface ThemeColors {
 
 // Palette: #006241 (vert foncé), #d4e9e2 (vert clair), #1e3932 (vert très foncé), #dff9ba (vert lime)
 export const lightTheme: ThemeColors = {
-  background: '#FFFFFF',
+  background: '#f5f7f6',
   backgroundSecondary: '#d4e9e2',
   card: '#FFFFFF',
   cardBorder: '#d4e9e2',
@@ -38,7 +38,7 @@ export const lightTheme: ThemeColors = {
   error: '#ef4444',
   tabBar: '#FFFFFF',
   tabBarBorder: '#d4e9e2',
-  inputBackground: '#d4e9e2',
+  inputBackground: '#e8efe9',
   divider: '#d4e9e2',
 };
 

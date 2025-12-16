@@ -283,9 +283,9 @@ export default function AdminScreen() {
   const technicians = users.filter(u => u.role === 'technician');
 
   return (
-    <View className="flex-1 bg-gray-50">
+    <View className="flex-1" style={{ backgroundColor: '#006241' }}>
       {/* Header */}
-      <View className="bg-[#B8C901] pt-12 pb-4 px-4">
+      <View className="bg-[#006241] pt-12 pb-4 px-4">
         <View className="flex-row items-center justify-between mb-4">
           <View className="flex-row items-center">
             <TouchableOpacity onPress={() => router.back()} className="bg-white/20 rounded-lg p-2 mr-3">
@@ -299,12 +299,12 @@ export default function AdminScreen() {
         </View>
 
         {/* Tabs */}
-        <View className="flex-row bg-white/20 rounded-lg p-1">
+        <View className="flex-row bg-white/10 rounded-lg p-1">
           <TouchableOpacity
             onPress={() => setActiveTab('users')}
             className={`flex-1 py-2 rounded-md ${activeTab === 'users' ? 'bg-white' : ''}`}
           >
-            <Text className={`text-center font-medium ${activeTab === 'users' ? 'text-[#B8C901]' : 'text-white'}`}>
+            <Text className={`text-center font-medium ${activeTab === 'users' ? 'text-[#006241]' : 'text-white'}`}>
               Utilisateurs ({users.length})
             </Text>
           </TouchableOpacity>
@@ -312,7 +312,7 @@ export default function AdminScreen() {
             onPress={() => setActiveTab('missions')}
             className={`flex-1 py-2 rounded-md ${activeTab === 'missions' ? 'bg-white' : ''}`}
           >
-            <Text className={`text-center font-medium ${activeTab === 'missions' ? 'text-[#B8C901]' : 'text-white'}`}>
+            <Text className={`text-center font-medium ${activeTab === 'missions' ? 'text-[#006241]' : 'text-white'}`}>
               Missions ({missions.length})
             </Text>
           </TouchableOpacity>
@@ -333,7 +333,7 @@ export default function AdminScreen() {
             <View className="p-4">
               <TouchableOpacity
                 onPress={() => setUserModalVisible(true)}
-                className="bg-[#B8C901] py-4 rounded-xl flex-row items-center justify-center mb-4"
+                className="bg-[#006241] py-4 rounded-xl flex-row items-center justify-center mb-4"
               >
                 <Ionicons name="person-add" size={20} color="white" />
                 <Text className="text-white font-semibold ml-2">Créer un utilisateur</Text>
@@ -574,12 +574,21 @@ export default function AdminScreen() {
                 numberOfLines={3}
               />
 
+
               <Text className="text-gray-600 mb-2">Lieu *</Text>
               <TextInput
                 className="bg-gray-100 rounded-xl px-4 py-3 mb-4"
                 placeholder="Paris 15e"
                 value={newMission.location}
                 onChangeText={(text) => setNewMission({ ...newMission, location: text })}
+              />
+
+              <Text className="text-gray-600 mb-2">Type de métier *</Text>
+              <TextInput
+                className="bg-gray-100 rounded-xl px-4 py-3 mb-4"
+                placeholder="Ex : Électricien, Plombier, Fibre optique..."
+                value={newMission.skills}
+                onChangeText={(text) => setNewMission({ ...newMission, skills: text })}
               />
 
               <Text className="text-gray-600 mb-2">Adresse</Text>

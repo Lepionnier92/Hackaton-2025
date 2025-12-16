@@ -1,3 +1,77 @@
+# 📂 Structure du projet et explications détaillées
+
+Voici un récapitulatif de l’architecture du dossier `hackaton/` et le rôle de chaque dossier/fichier principal :
+
+## Racine du projet
+
+- **README.md** : Présentation générale, instructions d’installation et d’utilisation.
+- **app.json, babel.config.js, eslint.config.js, metro.config.js, tailwind.config.js, tsconfig.json** : Fichiers de configuration pour Expo, Babel, ESLint, Metro, Tailwind CSS et TypeScript.
+- **global.css** : Feuille de style globale (web ou composants partagés).
+
+## Dossier `hackaton/`
+
+### 1. `app/`
+Contient la structure des pages/écrans de l’application, organisée par routes (Expo Router) :
+- **(tabs)/** : Ecrans principaux accessibles via la barre d’onglets (accueil, missions, profil, etc.).
+- **(admin)/** : Ecrans d’administration (gestion utilisateurs, missions, etc.).
+- **mission/** : Détail d’une mission (`[id].tsx`).
+- **modal.tsx** : Modales globales (popups).
+- **_layout.tsx** : Layout général de l’application (navigation, header, etc.).
+
+### 2. `components/`
+Composants réutilisables dans toute l’application :
+- **external-link.tsx** : Lien externe stylisé.
+- **haptic-tab.tsx** : Onglet avec retour haptique.
+- **hello-wave.tsx** : Animation d’accueil.
+- **parallax-scroll-view.tsx** : ScrollView avec effet parallaxe.
+- **themed-text.tsx, themed-view.tsx** : Composants qui s’adaptent au thème (clair/sombre).
+- **ui/** : Composants UI spécifiques (collapsible, icônes, etc.).
+
+### 3. `constants/`
+- **theme.ts** : Définition des couleurs, thèmes, et constantes visuelles.
+
+### 4. `contexts/`
+- **AuthContext.tsx** : Gestion de l’authentification, session utilisateur, et méthodes associées.
+- **ThemeContext.tsx** : Gestion du thème (clair/sombre) et accès aux couleurs.
+
+### 5. `hooks/`
+Hooks personnalisés pour la gestion du thème, couleurs, etc.
+
+### 6. `services/`
+- **database.ts** : Service principal de gestion des données (utilisateurs, missions, amis, messages, etc.) via AsyncStorage. Contient toute la logique métier :
+	- CRUD utilisateurs/missions
+	- Gestion des amis (demandes, acceptation, recherche par username)
+	- Système de messagerie (conversations, messages, suppression, etc.)
+	- Attribution automatique des missions
+	- Statistiques technicien
+	- Réinitialisation de la base
+
+### 7. `assets/`
+- **images/** : Images et ressources statiques.
+
+### 8. `scripts/`
+- **reset-project.js** : Script pour réinitialiser la base de données locale (utile pour repartir de zéro).
+
+### Plateformes natives
+- **android/** : Fichiers de configuration et code natif Android (build.gradle, manifest, ressources, etc.).
+- **ios/** : Fichiers de configuration et code natif iOS (Podfile, Info.plist, AppDelegate.swift, etc.).
+
+---
+
+## Fonctionnalités principales de l’application
+
+- **Authentification** : connexion, gestion de session, changement de mot de passe, suppression de compte.
+- **Gestion des missions** : création, édition, suppression, attribution automatique selon profil/compétences/localisation.
+- **Gestion des utilisateurs** : création, édition, suppression, rôles (admin/technicien).
+- **Système d’amis** : ajout par nom d’utilisateur, demandes, acceptation/refus.
+- **Messagerie** : chat temps réel entre amis, envoi/suppression de messages, support des emojis, envoi par touche Entrée.
+- **Statistiques et fiches de paie** : pour les techniciens.
+- **Thème clair/sombre** : personnalisable, persistant.
+- **Interface admin** : gestion avancée des utilisateurs et missions.
+
+---
+
+N’hésitez pas à consulter chaque fichier/dossier pour plus de détails ou demander un focus sur une fonctionnalité précise !
 # TENEXA Workforce - Application Mobile Techniciens
 
 Application mobile React Native pour les techniciens de la plateforme TENEXA Workforce.

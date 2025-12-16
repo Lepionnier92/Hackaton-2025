@@ -4,12 +4,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { db } from '@/services/database';
 
 export default function EditProfileScreen() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, logout } = useAuth();
   const { theme } = useTheme();
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const [showPasswordFields, setShowPasswordFields] = useState(false);
+  const [passwords, setPasswords] = useState({
+    current: '',
+    new: '',
+    confirm: '',
+  });
 
   const [formData, setFormData] = useState({
     firstName: user?.firstName || '',
@@ -47,6 +54,61 @@ export default function EditProfileScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleChangePassword = async () => {
+    if (!passwords.current || !passwords.new || !passwords.confirm) {
+      Alert.alert('Erreur', 'Tous les champs sont obligatoires');
+      return;
+    }
+    if (passwords.new.length < 8) {
+      Alert.alert('Erreur', 'Le nouveau mot de passe doit faire au moins 8 caractères');
+      return;
+    }
+    if (passwords.new !== passwords.confirm) {
+      Alert.alert('Erreur', 'Les mots de passe ne correspondent pas');
+      return;
+    }
+    setSaving(true);
+    try {
+      // Vérifier l'ancien mot de passe
+      const dbUser = await db.getUserById(user.id);
+      if (!dbUser || dbUser.password !== passwords.current) {
+        Alert.alert('Erreur', 'Ancien mot de passe incorrect');
+        setSaving(false);
+        return;
+      }
+      await db.updateUser(user.id, { password: passwords.new });
+      setPasswords({ current: '', new: '', confirm: '' });
+      setShowPasswordFields(false);
+      Alert.alert('Succès', 'Mot de passe modifié !');
+    } catch (error) {
+      Alert.alert('Erreur', 'Impossible de changer le mot de passe');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    Alert.alert(
+      'Supprimer le compte',
+      'Cette action est irréversible. Êtes-vous sûr ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        { text: 'Supprimer', style: 'destructive', onPress: async () => {
+          setSaving(true);
+          try {
+            await db.deleteUser(user.id);
+            await logout();
+            router.replace('/(auth)/register');
+          } catch (error) {
+            Alert.alert('Erreur', 'Impossible de supprimer le compte');
+          } finally {
+            setSaving(false);
+          }
+        }},
+      ]
+    );
   };
 
   const InputField = ({ 
@@ -207,26 +269,56 @@ export default function EditProfileScreen() {
           {/* Danger Zone */}
           <View className="rounded-2xl p-4 mb-8" style={{ backgroundColor: theme.card }}>
             <Text style={{ color: theme.text }} className="text-lg font-bold mb-4">Zone de danger</Text>
-            
             <TouchableOpacity 
               className="flex-row items-center py-3"
               style={{ borderBottomWidth: 1, borderBottomColor: theme.divider }}
-              onPress={() => Alert.alert('Info', 'Cette fonctionnalité arrive bientôt')}
+              onPress={() => setShowPasswordFields(v => !v)}
             >
               <Ionicons name="key-outline" size={20} color={theme.warning} />
               <Text style={{ color: theme.warning }} className="ml-3">Changer le mot de passe</Text>
             </TouchableOpacity>
-
+            {showPasswordFields && (
+              <View className="mt-4 mb-2">
+                <TextInput
+                  placeholder="Ancien mot de passe"
+                  secureTextEntry
+                  value={passwords.current}
+                  onChangeText={t => setPasswords(p => ({ ...p, current: t }))}
+                  className="mb-2 px-4 py-3 rounded-xl"
+                  style={{ backgroundColor: theme.inputBackground, color: theme.text }}
+                  placeholderTextColor={theme.textMuted}
+                />
+                <TextInput
+                  placeholder="Nouveau mot de passe"
+                  secureTextEntry
+                  value={passwords.new}
+                  onChangeText={t => setPasswords(p => ({ ...p, new: t }))}
+                  className="mb-2 px-4 py-3 rounded-xl"
+                  style={{ backgroundColor: theme.inputBackground, color: theme.text }}
+                  placeholderTextColor={theme.textMuted}
+                />
+                <TextInput
+                  placeholder="Confirmer le nouveau mot de passe"
+                  secureTextEntry
+                  value={passwords.confirm}
+                  onChangeText={t => setPasswords(p => ({ ...p, confirm: t }))}
+                  className="mb-2 px-4 py-3 rounded-xl"
+                  style={{ backgroundColor: theme.inputBackground, color: theme.text }}
+                  placeholderTextColor={theme.textMuted}
+                />
+                <TouchableOpacity
+                  onPress={handleChangePassword}
+                  disabled={saving}
+                  className="rounded-xl py-3 items-center"
+                  style={{ backgroundColor: theme.warning, opacity: saving ? 0.6 : 1 }}
+                >
+                  {saving ? <ActivityIndicator color="#fff" /> : <Text className="text-white font-semibold">Valider</Text>}
+                </TouchableOpacity>
+              </View>
+            )}
             <TouchableOpacity 
               className="flex-row items-center py-3"
-              onPress={() => Alert.alert(
-                'Supprimer le compte',
-                'Cette action est irréversible. Êtes-vous sûr ?',
-                [
-                  { text: 'Annuler', style: 'cancel' },
-                  { text: 'Supprimer', style: 'destructive' },
-                ]
-              )}
+              onPress={handleDeleteAccount}
             >
               <Ionicons name="trash-outline" size={20} color={theme.error} />
               <Text style={{ color: theme.error }} className="ml-3">Supprimer mon compte</Text>

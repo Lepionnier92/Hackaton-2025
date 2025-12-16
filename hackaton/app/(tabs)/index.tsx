@@ -1,10 +1,13 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Image } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Image, Modal, ActivityIndicator, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { db, DBMission } from '@/services/database';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
 
 export default function DashboardScreen() {
   const { user } = useAuth();
@@ -18,6 +21,12 @@ export default function DashboardScreen() {
     earnings: 0,
     rating: 4.9,
   });
+
+  // Modals
+  const [showMonthlyModal, setShowMonthlyModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [selectedPeriod, setSelectedPeriod] = useState<'month' | 'year' | 'all'>('month');
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -63,6 +72,45 @@ export default function DashboardScreen() {
 
   const currentMission = missions.find(m => m.status === 'in_progress' || m.status === 'accepted');
   const proposals = missions.filter(m => m.status === 'proposed').slice(0, 2);
+  
+  // Missions terminées ce mois
+  const currentMonthIndex = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+  const completedThisMonth = missions.filter(m => {
+    if (m.status !== 'completed') return false;
+    const endDate = new Date(m.endDate);
+    return endDate.getMonth() === currentMonthIndex && endDate.getFullYear() === currentYear;
+  });
+  const monthlyEarnings = completedThisMonth.reduce((sum, m) => sum + m.budget, 0);
+
+  // Missions pour le rapport
+  const getFilteredMissions = () => {
+    const now = new Date();
+    const completed = missions.filter(m => m.status === 'completed');
+    return completed.filter(m => {
+      const endDate = new Date(m.endDate);
+      if (selectedPeriod === 'month') {
+        return endDate.getMonth() === now.getMonth() && endDate.getFullYear() === now.getFullYear();
+      } else if (selectedPeriod === 'year') {
+        return endDate.getFullYear() === now.getFullYear();
+      }
+      return true;
+    });
+  };
+
+  const filteredMissions = getFilteredMissions();
+  const totalRevenue = filteredMissions.reduce((sum, m) => sum + m.budget, 0);
+  const avgPerMission = filteredMissions.length > 0 ? totalRevenue / filteredMissions.length : 0;
+
+  const getPeriodLabel = () => {
+    const now = new Date();
+    if (selectedPeriod === 'month') {
+      return now.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    } else if (selectedPeriod === 'year') {
+      return `Année ${now.getFullYear()}`;
+    }
+    return 'Toutes les périodes';
+  };
 
   const handleAccept = async (missionId: number) => {
     try {
@@ -79,6 +127,178 @@ export default function DashboardScreen() {
       loadData();
     } catch (error) {
       console.error('Erreur:', error);
+    }
+  };
+
+  const generatePDF = async () => {
+    if (filteredMissions.length === 0) {
+      if (Platform.OS === 'web') {
+        window.alert('Aucune mission à exporter pour cette période');
+      }
+      return;
+    }
+
+    setGenerating(true);
+    try {
+      const now = new Date();
+      const periodLabel = getPeriodLabel();
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Rapport de revenus - ${user?.firstName} ${user?.lastName}</title>
+          <style>
+            body { font-family: 'Helvetica', Arial, sans-serif; padding: 40px; color: #333; }
+            .header { text-align: center; margin-bottom: 40px; border-bottom: 3px solid #B8C901; padding-bottom: 20px; }
+            .logo { font-size: 28px; font-weight: bold; color: #B8C901; }
+            .title { font-size: 24px; margin-top: 10px; }
+            .period { color: #666; font-size: 16px; margin-top: 5px; }
+            .info-box { background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 30px; }
+            .info-row { display: flex; justify-content: space-between; margin-bottom: 10px; }
+            .summary { display: flex; justify-content: space-around; margin: 30px 0; }
+            .summary-item { text-align: center; padding: 20px; background: #f0f0f0; border-radius: 10px; min-width: 150px; }
+            .summary-value { font-size: 28px; font-weight: bold; color: #B8C901; }
+            .summary-label { color: #666; margin-top: 5px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { background: #B8C901; color: white; padding: 12px; text-align: left; }
+            td { padding: 12px; border-bottom: 1px solid #ddd; }
+            tr:nth-child(even) { background: #f8f9fa; }
+            .total-row { font-weight: bold; background: #e8f5e9 !important; }
+            .footer { margin-top: 40px; text-align: center; color: #999; font-size: 12px; }
+            .amount { text-align: right; color: #22c55e; font-weight: bold; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="logo">TENEX Workforce</div>
+            <div class="title">Rapport de Revenus</div>
+            <div class="period">${periodLabel}</div>
+          </div>
+
+          <div class="info-box">
+            <div class="info-row">
+              <span><strong>Technicien:</strong></span>
+              <span>${user?.firstName} ${user?.lastName}</span>
+            </div>
+            <div class="info-row">
+              <span><strong>Email:</strong></span>
+              <span>${user?.email}</span>
+            </div>
+            <div class="info-row">
+              <span><strong>Date du rapport:</strong></span>
+              <span>${now.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+            </div>
+          </div>
+
+          <div class="summary">
+            <div class="summary-item">
+              <div class="summary-value">${filteredMissions.length}</div>
+              <div class="summary-label">Missions terminées</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-value">€${totalRevenue.toLocaleString('fr-FR')}</div>
+              <div class="summary-label">Revenus totaux</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-value">€${avgPerMission.toFixed(0)}</div>
+              <div class="summary-label">Moyenne par mission</div>
+            </div>
+          </div>
+
+          <h3>Détail des missions</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Mission</th>
+                <th>Lieu</th>
+                <th>Durée</th>
+                <th style="text-align: right;">Montant</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredMissions.map(m => `
+                <tr>
+                  <td>${new Date(m.endDate).toLocaleDateString('fr-FR')}</td>
+                  <td>${m.title}</td>
+                  <td>${m.location}</td>
+                  <td>${m.duration} jour(s)</td>
+                  <td class="amount">€${m.budget.toLocaleString('fr-FR')}</td>
+                </tr>
+              `).join('')}
+              <tr class="total-row">
+                <td colspan="4"><strong>TOTAL</strong></td>
+                <td class="amount">€${totalRevenue.toLocaleString('fr-FR')}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="footer">
+            <p>Document généré automatiquement par TENEX Workforce</p>
+            <p>Ce document est à conserver pour vos déclarations</p>
+          </div>
+        </body>
+        </html>
+      `;
+
+      if (Platform.OS === 'web') {
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+          printWindow.document.write(htmlContent);
+          printWindow.document.close();
+          printWindow.print();
+        }
+      } else {
+        const { uri } = await Print.printToFileAsync({ html: htmlContent });
+        await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+      }
+    } catch (error) {
+      console.error('Erreur génération PDF:', error);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const generateCSV = async () => {
+    if (filteredMissions.length === 0) {
+      if (Platform.OS === 'web') {
+        window.alert('Aucune mission à exporter pour cette période');
+      }
+      return;
+    }
+
+    setGenerating(true);
+    try {
+      const headers = ['Date', 'Mission', 'Description', 'Lieu', 'Durée (jours)', 'Montant (€)'];
+      const rows = filteredMissions.map(m => [
+        new Date(m.endDate).toLocaleDateString('fr-FR'),
+        `"${m.title}"`,
+        `"${m.description || ''}"`,
+        `"${m.location}"`,
+        m.duration.toString(),
+        m.budget.toString()
+      ]);
+      rows.push(['', '', '', '', 'TOTAL', totalRevenue.toString()]);
+      
+      const csvContent = [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
+
+      if (Platform.OS === 'web') {
+        const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `revenus_${user?.lastName}_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+      } else {
+        const fileUri = FileSystem.documentDirectory + `revenus_${user?.lastName}_${new Date().toISOString().split('T')[0]}.csv`;
+        await FileSystem.writeAsStringAsync(fileUri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
+        await Sharing.shareAsync(fileUri, { mimeType: 'text/csv' });
+      }
+    } catch (error) {
+      console.error('Erreur génération CSV:', error);
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -123,7 +343,7 @@ export default function DashboardScreen() {
             onPress={() => router.push('/(tabs)/missions-list' as any)}
             className="w-1/2 pr-2 mb-3"
           >
-            <View className="rounded-2xl p-4" style={{ backgroundColor: theme.card }}>
+            <View className="rounded-2xl p-4" style={{ backgroundColor: theme.card, borderWidth: 1, borderColor: theme.cardBorder, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 }}>
               <View className="rounded-full w-10 h-10 items-center justify-center mb-2" style={{ backgroundColor: `${theme.accent}20` }}>
                 <Ionicons name="briefcase-outline" size={20} color={theme.accent} />
               </View>
@@ -131,20 +351,23 @@ export default function DashboardScreen() {
               <Text style={{ color: theme.textMuted }} className="text-sm">Missions actives</Text>
             </View>
           </TouchableOpacity>
-          <View className="w-1/2 pl-2 mb-3">
-            <View className="rounded-2xl p-4" style={{ backgroundColor: theme.card }}>
+          <TouchableOpacity 
+            onPress={() => setShowMonthlyModal(true)}
+            className="w-1/2 pl-2 mb-3"
+          >
+            <View className="rounded-2xl p-4" style={{ backgroundColor: theme.card, borderWidth: 1, borderColor: theme.cardBorder, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 }}>
               <View className="rounded-full w-10 h-10 items-center justify-center mb-2" style={{ backgroundColor: `${theme.success}20` }}>
                 <Ionicons name="checkmark-circle-outline" size={20} color={theme.success} />
               </View>
               <Text style={{ color: theme.text }} className="text-2xl font-bold">{stats.completedThisMonth}</Text>
               <Text style={{ color: theme.textMuted }} className="text-sm">Ce mois</Text>
             </View>
-          </View>
+          </TouchableOpacity>
           <TouchableOpacity 
-            onPress={() => router.push('/(tabs)/activity' as any)}
+            onPress={() => setShowReportModal(true)}
             className="w-1/2 pr-2"
           >
-            <View className="rounded-2xl p-4" style={{ backgroundColor: theme.card }}>
+            <View className="rounded-2xl p-4" style={{ backgroundColor: theme.card, borderWidth: 1, borderColor: theme.cardBorder, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 }}>
               <View className="rounded-full w-10 h-10 items-center justify-center mb-2" style={{ backgroundColor: '#3b82f620' }}>
                 <Ionicons name="wallet-outline" size={20} color="#3b82f6" />
               </View>
@@ -153,7 +376,7 @@ export default function DashboardScreen() {
             </View>
           </TouchableOpacity>
           <View className="w-1/2 pl-2">
-            <View className="rounded-2xl p-4" style={{ backgroundColor: theme.card }}>
+            <View className="rounded-2xl p-4" style={{ backgroundColor: theme.card, borderWidth: 1, borderColor: theme.cardBorder, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 }}>
               <View className="rounded-full w-10 h-10 items-center justify-center mb-2" style={{ backgroundColor: '#eab30820' }}>
                 <Ionicons name="star-outline" size={20} color="#eab308" />
               </View>
@@ -306,20 +529,203 @@ export default function DashboardScreen() {
               <Text style={{ color: theme.text }} className="font-medium">Messages</Text>
             </TouchableOpacity>
             <TouchableOpacity 
-              onPress={() => router.push('/(tabs)/activity' as any)}
+              onPress={() => setShowReportModal(true)}
               className="flex-1 rounded-2xl p-4 ml-2 items-center"
               style={{ backgroundColor: theme.card }}
             >
-              <View className="rounded-full w-12 h-12 items-center justify-center mb-2" style={{ backgroundColor: `${theme.success}20` }}>
-                <Ionicons name="wallet-outline" size={24} color={theme.success} />
+              <View className="rounded-full w-12 h-12 items-center justify-center mb-2" style={{ backgroundColor: '#ef444420' }}>
+                <Ionicons name="document-text-outline" size={24} color="#ef4444" />
               </View>
-              <Text style={{ color: theme.text }} className="font-medium">Revenus</Text>
+              <Text style={{ color: theme.text }} className="font-medium">Rapport</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         <View className="h-24" />
       </ScrollView>
+
+      {/* Modal Missions terminées ce mois */}
+      <Modal
+        visible={showMonthlyModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowMonthlyModal(false)}
+      >
+        <View className="flex-1 bg-black/50 justify-end">
+          <View className="rounded-t-3xl max-h-[85%]" style={{ backgroundColor: theme.background }}>
+            <View className="p-6">
+              {/* Header */}
+              <View className="flex-row items-center justify-between mb-6">
+                <View>
+                  <Text style={{ color: theme.text }} className="text-xl font-bold">Missions terminées</Text>
+                  <Text style={{ color: theme.textMuted }} className="text-sm capitalize">
+                    {new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowMonthlyModal(false)}>
+                  <Ionicons name="close" size={24} color={theme.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Stats */}
+              <View className="flex-row mb-6">
+                <View className="flex-1 mr-2 rounded-2xl p-4" style={{ backgroundColor: theme.card }}>
+                  <Text style={{ color: theme.success }} className="text-3xl font-bold">{completedThisMonth.length}</Text>
+                  <Text style={{ color: theme.textMuted }} className="text-sm">Missions</Text>
+                </View>
+                <View className="flex-1 ml-2 rounded-2xl p-4" style={{ backgroundColor: theme.card }}>
+                  <Text style={{ color: theme.text }} className="text-3xl font-bold">€{monthlyEarnings.toLocaleString()}</Text>
+                  <Text style={{ color: theme.textMuted }} className="text-sm">Revenus</Text>
+                </View>
+              </View>
+
+              {/* Liste */}
+              <ScrollView className="max-h-80">
+                {completedThisMonth.length === 0 ? (
+                  <View className="items-center py-8">
+                    <Ionicons name="document-text-outline" size={48} color={theme.textMuted} />
+                    <Text style={{ color: theme.textMuted }} className="mt-3 text-center">
+                      Aucune mission terminée ce mois-ci
+                    </Text>
+                  </View>
+                ) : (
+                  completedThisMonth.map((mission) => (
+                    <View
+                      key={mission.id}
+                      className="rounded-xl p-4 mb-2"
+                      style={{ backgroundColor: theme.card }}
+                    >
+                      <View className="flex-row items-center justify-between">
+                        <View className="flex-1 mr-3">
+                          <Text style={{ color: theme.text }} className="font-semibold">{mission.title}</Text>
+                          <Text style={{ color: theme.textMuted }} className="text-sm">
+                            {new Date(mission.endDate).toLocaleDateString('fr-FR')} • {mission.location}
+                          </Text>
+                        </View>
+                        <Text style={{ color: theme.success }} className="font-bold">+€{mission.budget}</Text>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Rapport de revenus */}
+      <Modal
+        visible={showReportModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowReportModal(false)}
+      >
+        <View className="flex-1 bg-black/50 justify-end">
+          <View className="rounded-t-3xl max-h-[90%]" style={{ backgroundColor: theme.background }}>
+            <View className="p-6">
+              {/* Header */}
+              <View className="flex-row items-center justify-between mb-6">
+                <View>
+                  <Text style={{ color: theme.text }} className="text-xl font-bold">Rapport de revenus</Text>
+                  <Text style={{ color: theme.textMuted }} className="text-sm">Générer vos fiches de paie</Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowReportModal(false)}>
+                  <Ionicons name="close" size={24} color={theme.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {/* Sélecteur de période */}
+                <Text style={{ color: theme.textMuted }} className="mb-3 font-medium">Période</Text>
+                <View className="flex-row mb-4">
+                  <TouchableOpacity
+                    onPress={() => setSelectedPeriod('month')}
+                    className="flex-1 rounded-xl py-3 mr-2 items-center"
+                    style={{ backgroundColor: selectedPeriod === 'month' ? theme.accent : theme.card }}
+                  >
+                    <Text style={{ color: selectedPeriod === 'month' ? 'white' : theme.text }} className="font-medium">Ce mois</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setSelectedPeriod('year')}
+                    className="flex-1 rounded-xl py-3 mx-1 items-center"
+                    style={{ backgroundColor: selectedPeriod === 'year' ? theme.accent : theme.card }}
+                  >
+                    <Text style={{ color: selectedPeriod === 'year' ? 'white' : theme.text }} className="font-medium">Cette année</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setSelectedPeriod('all')}
+                    className="flex-1 rounded-xl py-3 ml-2 items-center"
+                    style={{ backgroundColor: selectedPeriod === 'all' ? theme.accent : theme.card }}
+                  >
+                    <Text style={{ color: selectedPeriod === 'all' ? 'white' : theme.text }} className="font-medium">Tout</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Statistiques */}
+                <View className="rounded-2xl p-5 mb-4" style={{ backgroundColor: theme.card }}>
+                  <Text style={{ color: theme.textMuted }} className="text-sm mb-1 capitalize">{getPeriodLabel()}</Text>
+                  <Text style={{ color: theme.text }} className="text-4xl font-bold">€{totalRevenue.toLocaleString('fr-FR')}</Text>
+                  <View className="flex-row mt-4">
+                    <View className="flex-1">
+                      <Text style={{ color: theme.textMuted }} className="text-sm">Missions</Text>
+                      <Text style={{ color: theme.text }} className="text-xl font-bold">{filteredMissions.length}</Text>
+                    </View>
+                    <View className="flex-1">
+                      <Text style={{ color: theme.textMuted }} className="text-sm">Moyenne</Text>
+                      <Text style={{ color: theme.text }} className="text-xl font-bold">€{avgPerMission.toFixed(0)}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Boutons d'export */}
+                <Text style={{ color: theme.textMuted }} className="mb-3 font-medium">Exporter</Text>
+                
+                <TouchableOpacity
+                  onPress={generatePDF}
+                  disabled={generating}
+                  className="rounded-2xl p-4 mb-3 flex-row items-center"
+                  style={{ backgroundColor: theme.card, opacity: generating ? 0.6 : 1 }}
+                >
+                  <View className="w-12 h-12 rounded-xl items-center justify-center mr-4" style={{ backgroundColor: '#ef444420' }}>
+                    <Ionicons name="document-text" size={24} color="#ef4444" />
+                  </View>
+                  <View className="flex-1">
+                    <Text style={{ color: theme.text }} className="font-semibold">Export PDF</Text>
+                    <Text style={{ color: theme.textMuted }} className="text-sm">Fiche de paie formatée</Text>
+                  </View>
+                  {generating ? (
+                    <ActivityIndicator size="small" color={theme.accent} />
+                  ) : (
+                    <Ionicons name="download-outline" size={24} color={theme.textMuted} />
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={generateCSV}
+                  disabled={generating}
+                  className="rounded-2xl p-4 flex-row items-center"
+                  style={{ backgroundColor: theme.card, opacity: generating ? 0.6 : 1 }}
+                >
+                  <View className="w-12 h-12 rounded-xl items-center justify-center mr-4" style={{ backgroundColor: '#22c55e20' }}>
+                    <Ionicons name="grid" size={24} color="#22c55e" />
+                  </View>
+                  <View className="flex-1">
+                    <Text style={{ color: theme.text }} className="font-semibold">Export Excel (CSV)</Text>
+                    <Text style={{ color: theme.textMuted }} className="text-sm">Données pour tableur</Text>
+                  </View>
+                  {generating ? (
+                    <ActivityIndicator size="small" color={theme.accent} />
+                  ) : (
+                    <Ionicons name="download-outline" size={24} color={theme.textMuted} />
+                  )}
+                </TouchableOpacity>
+
+                <View className="h-6" />
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
