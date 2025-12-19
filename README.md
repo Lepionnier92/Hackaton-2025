@@ -1,51 +1,40 @@
-# Hackaton
-# Welcome to your Expo app 👋
+# TENEX Workforce - Projet Hackathon
+## 📋 Vue d'ensemble
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Ce repository contient l'application mobile pour techniciens de la plateforme TENEX Workforce, développée dans le cadre du hackathon.
 
-## Get started
+## 📱 Application Mobile Techniciens
 
-1. Install dependencies
+L'application mobile se trouve dans le dossier `/hackaton`.
 
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+### 🚀 Démarrage rapide
 
 ```bash
-npm run reset-project
+cd hackaton
+npm install
+npm start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Scannez le QR code avec l'application **Expo Go** sur votre téléphone.
 
-## Learn more
+### ✨ Fonctionnalités principales
 
-To learn more about developing your project with Expo, look at the following resources:
+- ✅ **Tableau de bord** avec statistiques et propositions de missions
+- ✅ **Gestion des missions** (proposées, en cours, terminées)
+- ✅ **Messagerie** pour communiquer avec les clients
+- ✅ **Profil technicien** avec compétences et disponibilités
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+### 🏗️ Technologies
 
-## Join the community
+- React Native + Expo SDK 54
+- TypeScript
+- NativeWind (Tailwind CSS)
+- Expo Router
 
-Join our community of developers creating universal apps.
+## 📚 Documentation
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Pour plus de détails, consultez le [README de l'application](./hackaton/README.md).
+
+---
+
+**Hackathon TENEX Workforce** - Décembre 2025
